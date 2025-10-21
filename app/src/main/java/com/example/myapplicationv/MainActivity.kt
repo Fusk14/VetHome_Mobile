@@ -21,6 +21,7 @@ class MainActivity : ComponentActivity() {
 }
 
 //parche agregado
+//asdasd
 @Composable
 fun AppRoot() {
     val navController = rememberNavController()
