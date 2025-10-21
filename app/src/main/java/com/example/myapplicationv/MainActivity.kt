@@ -23,9 +23,9 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppRoot() {
     val navController = rememberNavController()
-    MaterialTheme {  // ← Usamos MaterialTheme directamente por ahora
+    MaterialTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
-            AppNavGraph(venavController = navController)
+            AppNavGraph(navController = navController)
         }
     }
 }

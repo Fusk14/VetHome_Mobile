@@ -12,11 +12,12 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.runtime.rememberCoroutineScope
-import com.example.myapplicationv.screen.HomeScreen
+
 
 import com.example.myapplicationv.ui.components.AppTopBar
 import com.example.myapplicationv.ui.components.AppDrawer
 import com.example.myapplicationv.ui.components.defaultDrawerItems
+import com.example.myapplicationv.ui.screen.HomeScreen
 
 
 @Composable
@@ -74,7 +75,7 @@ fun AppNavGraph(navController: NavHostController) {
                 modifier = Modifier.padding(innerPadding)
             ) {
                 composable(Route.Home.path) {
-                    HomeScreen(
+                    HomeScreen (
                         onGoLogin = goLogin,
                         onGoMascotas = goMascotas,
                         onGoCitas = goCitas
