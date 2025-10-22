@@ -18,12 +18,12 @@ data class PetEntity(
     val id: Long = 0L,
 
     val ownerId: Long,
-    val name: String,
-    val species: String,
-    val breed: String,
-    val birthDate: String? = null,
-    val weight: Double? = null,
+    val nombre: String,
+    val especie: String,
+    val raza: String,
+    val fechaNacimiento: String? = null,
+    val peso: Double? = null,
     val color: String? = null,
-    val medicalNotes: String? = null,
+    val notasMedicas: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 )
