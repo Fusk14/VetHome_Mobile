@@ -73,37 +73,37 @@ abstract class AppDatabase : RoomDatabase() {
                                     )
                                 )
 
-                                // mascotas pruebas
+                                // mascotas pruebas - ACTUALIZADO con nuevos nombres de campos
                                 val petsSeed = listOf(
                                     PetEntity(
-                                        ownerId = 1, // ID del admin se asigna autamaticamente
-                                        name = "Firulais",
-                                        species = "Perro",
-                                        breed = "Labrador Retriever",
-                                        birthDate = "2022-05-15",
-                                        weight = 25.5,
+                                        ownerId = 1, // ID del admin se asigna automáticamente
+                                        nombre = "Firulais",
+                                        especie = "Perro",
+                                        raza = "Labrador Retriever",
+                                        fechaNacimiento = "2022-05-15",
+                                        peso = 25.5,
                                         color = "Dorado",
-                                        medicalNotes = "Vacunas al día. Alérgico a algunos granos."
+                                        notasMedicas = "Vacunas al día. Alérgico a algunos granos."
                                     ),
                                     PetEntity(
                                         ownerId = 1,
-                                        name = "Michi",
-                                        species = "Gato",
-                                        breed = "Siamés",
-                                        birthDate = "2023-01-20",
-                                        weight = 4.2,
+                                        nombre = "Michi",
+                                        especie = "Gato",
+                                        raza = "Siamés",
+                                        fechaNacimiento = "2023-01-20",
+                                        peso = 4.2,
                                         color = "Blanco y marrón",
-                                        medicalNotes = "Castrado. Dieta especial para riñón."
+                                        notasMedicas = "Castrado. Dieta especial para riñón."
                                     ),
                                     PetEntity(
                                         ownerId = 2, // ID del cliente
-                                        name = "Toby",
-                                        species = "Perro",
-                                        breed = "Beagle",
-                                        birthDate = "2021-11-10",
-                                        weight = 12.0,
+                                        nombre = "Toby",
+                                        especie = "Perro",
+                                        raza = "Beagle",
+                                        fechaNacimiento = "2021-11-10",
+                                        peso = 12.0,
                                         color = "Tricolor",
-                                        medicalNotes = "Energético. Necesita ejercicio diario."
+                                        notasMedicas = "Energético. Necesita ejercicio diario."
                                     )
                                 )
 
@@ -115,7 +115,7 @@ abstract class AppDatabase : RoomDatabase() {
                                     // pausa para asegurar que los clientes fueron insertados
                                     kotlinx.coroutines.delay(100)
 
-                                   //insert de la mascota
+                                    // insert de las mascotas - ACTUALIZADO
                                     petsSeed.forEach { petDao.insert(it) }
                                 }
                             }
