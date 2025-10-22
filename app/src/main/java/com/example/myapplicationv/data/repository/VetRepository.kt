@@ -4,6 +4,7 @@ import com.example.myapplicationv.data.local.user.ClientDao
 import com.example.myapplicationv.data.local.user.ClientEntity
 import com.example.myapplicationv.data.local.pet.PetDao
 import com.example.myapplicationv.data.local.pet.PetEntity
+import com.example.myapplicationv.domain.validation.* // ← Importar validadores
 import kotlinx.coroutines.flow.Flow
 
 class VetRepository(
@@ -13,6 +14,12 @@ class VetRepository(
 
     //validacion del login
     suspend fun login(email: String, password: String): Result<ClientEntity> {
+        // Usar validador centralizado para email
+        val emailError = validateEmail(email)
+        if (emailError != null) {
+            return Result.failure(IllegalArgumentException(emailError))
+        }
+
         val client = clientDao.getByEmail(email)                         // Busca cliente
         return if (client != null && client.password == password) {      // Verifica pass
             Result.success(client)
@@ -30,6 +37,21 @@ class VetRepository(
         emergencyContact: String? = null,
         password: String
     ): Result<Long> {
+        // Usar validadores centralizados para todos los campos
+        val nameError = validateNameLettersOnly(name)
+        val emailError = validateEmail(email)
+        val phoneError = validatePhoneDigitsOnly(phone)
+        val addressError = validateAddress(address ?: "")
+        val emergencyContactError = validateEmergencyContact(emergencyContact ?: "")
+        val passwordError = validateStrongPassword(password)
+
+        // Si hay algún error de validación, retornar failure
+        val errors = listOf(nameError, emailError, phoneError, addressError, emergencyContactError, passwordError)
+        val firstError = errors.firstOrNull { it != null }
+        if (firstError != null) {
+            return Result.failure(IllegalArgumentException(firstError))
+        }
+
         val exists = clientDao.getByEmail(email) != null               // validamos si existe el email aqui
         if (exists) {
             return Result.failure(IllegalStateException("El correo ya está registrado"))
@@ -72,6 +94,22 @@ class VetRepository(
         color: String? = null,
         notasMedicas: String? = null
     ): Result<Long> {
+        //Usar validadores centralizados para mascotas
+        val nombreError = validatePetName(nombre)
+        val especieError = validateSpecies(especie)
+        val razaError = validateBreed(raza)
+        val fechaError = validateBirthDate(fechaNacimiento ?: "")
+        val pesoError = if (peso != null) validateWeight(peso.toString()) else null
+        val colorError = validateColor(color ?: "")
+        val notasError = validateMedicalNotes(notasMedicas ?: "")
+
+        // Verificar errores de validación
+        val errors = listOf(nombreError, especieError, razaError, fechaError, pesoError, colorError, notasError)
+        val firstError = errors.firstOrNull { it != null }
+        if (firstError != null) {
+            return Result.failure(IllegalArgumentException(firstError))
+        }
+
         // Verificar que el dueño existe
         val owner = clientDao.getById(ownerId)
         if (owner == null) {
@@ -107,7 +145,12 @@ class VetRepository(
 
     //actualiza el peso
     suspend fun updatePetWeight(petId: Long, nuevoPeso: Double) {
-        petDao.updateWeight(petId, nuevoPeso)  // ← CORREGIDO: newWeight → nuevoPeso
+        // Validar peso antes de actualizar
+        val pesoError = validateWeight(nuevoPeso.toString())
+        if (pesoError != null) {
+            throw IllegalArgumentException(pesoError)
+        }
+        petDao.updateWeight(petId, nuevoPeso)
     }
 
     //elimina una mascota
