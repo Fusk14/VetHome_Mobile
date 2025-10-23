@@ -12,20 +12,30 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.runtime.rememberCoroutineScope
-
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 import com.example.myapplicationv.ui.components.AppTopBar
 import com.example.myapplicationv.ui.components.AppDrawer
 import com.example.myapplicationv.ui.components.defaultDrawerItems
 import com.example.myapplicationv.ui.screen.HomeScreen
-
+import com.example.myapplicationv.ui.screen.LoginScreenVm
+import com.example.myapplicationv.ui.screen.RegisterScreenVm
+import com.example.myapplicationv.data.repository.VetRepository
+import com.example.myapplicationv.data.local.database.AppDatabase
+import com.example.myapplicationv.viewmodel.AuthViewModel
+import com.example.myapplicationv.viewmodel.AuthViewModelFactory
 
 @Composable
 fun AppNavGraph(navController: NavHostController) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    // Helpers de navegación
+    // Crear el repositorio y ViewModel Factory
+    val database = AppDatabase.getInstance(androidx.compose.ui.platform.LocalContext.current)
+    val repository = VetRepository(database.clientDao(), database.petDao())
+    val viewModelFactory = AuthViewModelFactory(repository)
+
+    // Helpers de navegacion
     val goHome: () -> Unit = { navController.navigate(Route.Home.path) }
     val goLogin: () -> Unit = { navController.navigate(Route.Login.path) }
     val goRegister: () -> Unit = { navController.navigate(Route.Register.path) }
@@ -74,20 +84,43 @@ fun AppNavGraph(navController: NavHostController) {
                 startDestination = Route.Home.path,
                 modifier = Modifier.padding(innerPadding)
             ) {
+                // Pantalla Home
                 composable(Route.Home.path) {
-                    HomeScreen (
+                    HomeScreen(
                         onGoLogin = goLogin,
                         onGoMascotas = goMascotas,
                         onGoCitas = goCitas
                     )
                 }
-                // Agregaremos Login y Register después
+
+                // Pantalla Login - CONECTADA con ViewModel y navegacion a Home
                 composable(Route.Login.path) {
-                    // Temporal - pantalla vacía
+                    val vm: AuthViewModel = viewModel(factory = viewModelFactory)
+                    LoginScreenVm(
+                        vm = vm,
+                        onLoginOkNavigateHome = goHome,  // Navega a Home cuando login es exitoso
+                        onGoRegister = goRegister
+                    )
+                }
+
+                // Pantalla Register - CONECTADA con ViewModel y navegacion a Login
+                composable(Route.Register.path) {
+                    val vm: AuthViewModel = viewModel(factory = viewModelFactory)
+                    RegisterScreenVm(
+                        vm = vm,
+                        onRegisteredNavigateLogin = goLogin,  // Navega a Login cuando registro es exitoso
+                        onGoLogin = goLogin
+                    )
+                }
+
+                // Pantallas temporales (para desarrollo)
+                composable(Route.Mascotas.path) {
+                    // Pantalla temporal de Mascotas
                     HomeScreen(onGoLogin = goLogin, onGoMascotas = goMascotas, onGoCitas = goCitas)
                 }
-                composable(Route.Register.path) {
-                    // Temporal - pantalla vacía
+
+                composable(Route.Citas.path) {
+                    // Pantalla temporal de Citas
                     HomeScreen(onGoLogin = goLogin, onGoMascotas = goMascotas, onGoCitas = goCitas)
                 }
             }
