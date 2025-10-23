@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -12,35 +13,67 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.lifecycle.viewmodel.compose.viewModel
 
+// IMPORTS PARA VIEWMODEL
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.myapplicationv.data.local.database.AppDatabase
+import com.example.myapplicationv.data.repository.VetRepository
+import com.example.myapplicationv.viewmodel.AuthViewModel
+import com.example.myapplicationv.viewmodel.AuthViewModelFactory
+
+// IMPORTS DE COMPONENTES
 import com.example.myapplicationv.ui.components.AppTopBar
 import com.example.myapplicationv.ui.components.AppDrawer
 import com.example.myapplicationv.ui.components.defaultDrawerItems
+
+// IMPORTS DE PANTALLAS
 import com.example.myapplicationv.ui.screen.HomeScreen
 import com.example.myapplicationv.ui.screen.LoginScreenVm
 import com.example.myapplicationv.ui.screen.RegisterScreenVm
-import com.example.myapplicationv.data.repository.VetRepository
-import com.example.myapplicationv.data.local.database.AppDatabase
-import com.example.myapplicationv.viewmodel.AuthViewModel
-import com.example.myapplicationv.viewmodel.AuthViewModelFactory
 
 @Composable
 fun AppNavGraph(navController: NavHostController) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    // Crear el repositorio y ViewModel Factory
-    val database = AppDatabase.getInstance(androidx.compose.ui.platform.LocalContext.current)
-    val repository = VetRepository(database.clientDao(), database.petDao())
-    val viewModelFactory = AuthViewModelFactory(repository)
+    // CREAR VIEWMODEL CON DEPENDENCIAS
+    val context = LocalContext.current
+    val database = AppDatabase.getInstance(context)
+    val vetRepository = VetRepository(
+        clientDao = database.clientDao(),
+        petDao = database.petDao()
+    )
+    val authViewModel: AuthViewModel = viewModel(
+        factory = AuthViewModelFactory(vetRepository)
+    )
 
-    // Helpers de navegacion
-    val goHome: () -> Unit = { navController.navigate(Route.Home.path) }
-    val goLogin: () -> Unit = { navController.navigate(Route.Login.path) }
-    val goRegister: () -> Unit = { navController.navigate(Route.Register.path) }
-    val goMascotas: () -> Unit = { navController.navigate(Route.Mascotas.path) }
-    val goCitas: () -> Unit = { navController.navigate(Route.Citas.path) }
+    // HELPERS DE NAVEGACIÓN MEJORADOS
+    val goHome: () -> Unit = {
+        navController.navigate(Route.Home.path) {
+            popUpTo(Route.Home.path) { inclusive = true }
+        }
+    }
+
+    val goLogin: () -> Unit = {
+        navController.navigate(Route.Login.path) {
+            // Limpiar back stack al ir a login
+            popUpTo(Route.Home.path) { inclusive = false }
+        }
+    }
+
+    val goRegister: () -> Unit = {
+        navController.navigate(Route.Register.path) {
+            popUpTo(Route.Login.path) { inclusive = false }
+        }
+    }
+
+    val goMascotas: () -> Unit = {
+        navController.navigate(Route.Mascotas.path)
+    }
+
+    val goCitas: () -> Unit = {
+        navController.navigate(Route.Citas.path)
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -84,7 +117,7 @@ fun AppNavGraph(navController: NavHostController) {
                 startDestination = Route.Home.path,
                 modifier = Modifier.padding(innerPadding)
             ) {
-                // Pantalla Home
+                // PANTALLA HOME
                 composable(Route.Home.path) {
                     HomeScreen(
                         onGoLogin = goLogin,
@@ -93,35 +126,41 @@ fun AppNavGraph(navController: NavHostController) {
                     )
                 }
 
-                // Pantalla Login - CONECTADA con ViewModel y navegacion a Home
+                // 🆕 PANTALLA LOGIN
                 composable(Route.Login.path) {
-                    val vm: AuthViewModel = viewModel(factory = viewModelFactory)
                     LoginScreenVm(
-                        vm = vm,
-                        onLoginOkNavigateHome = goHome,  // Navega a Home cuando login es exitoso
+                        vm = authViewModel,
+                        onLoginOkNavigateHome = goHome,
                         onGoRegister = goRegister
                     )
                 }
 
-                // Pantalla Register - CONECTADA con ViewModel y navegacion a Login
+                // 🆕 PANTALLA REGISTER
                 composable(Route.Register.path) {
-                    val vm: AuthViewModel = viewModel(factory = viewModelFactory)
                     RegisterScreenVm(
-                        vm = vm,
-                        onRegisteredNavigateLogin = goLogin,  // Navega a Login cuando registro es exitoso
+                        vm = authViewModel,
+                        onRegisteredNavigateLogin = goLogin,
                         onGoLogin = goLogin
                     )
                 }
 
-                // Pantallas temporales (para desarrollo)
+                // PANTALLAS TEMPORALES (para desarrollo)
                 composable(Route.Mascotas.path) {
-                    // Pantalla temporal de Mascotas
-                    HomeScreen(onGoLogin = goLogin, onGoMascotas = goMascotas, onGoCitas = goCitas)
+                    // Pantalla temporal de mascotas
+                    HomeScreen(
+                        onGoLogin = goLogin,
+                        onGoMascotas = goMascotas,
+                        onGoCitas = goCitas
+                    )
                 }
 
                 composable(Route.Citas.path) {
-                    // Pantalla temporal de Citas
-                    HomeScreen(onGoLogin = goLogin, onGoMascotas = goMascotas, onGoCitas = goCitas)
+                    // Pantalla temporal de citas
+                    HomeScreen(
+                        onGoLogin = goLogin,
+                        onGoMascotas = goMascotas,
+                        onGoCitas = goCitas
+                    )
                 }
             }
         }
