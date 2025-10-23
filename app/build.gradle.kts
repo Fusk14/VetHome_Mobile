@@ -74,6 +74,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.6.2") // MANTENIDA (no estaba en el primero)
     implementation("androidx.compose.animation:animation") // MANTENIDA (no estaba en el primero)
     implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.material3:material3:1.1.2")
+
 
     //room y ksp
     implementation("androidx.room:room-runtime:2.6.1") // ACTUALIZADA
