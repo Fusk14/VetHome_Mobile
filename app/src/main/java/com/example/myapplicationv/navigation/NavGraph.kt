@@ -14,7 +14,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.runtime.rememberCoroutineScope
 
-// IMPORTS PARA VIEWMODEL
+// IMPORTS PARA VIEWMODEl
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplicationv.data.local.database.AppDatabase
 import com.example.myapplicationv.data.repository.VetRepository
