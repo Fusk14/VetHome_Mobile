@@ -6,7 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Pets
-import androidx.compose.material3.* // Asegúrate de que este import está
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -15,7 +15,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myapplicationv.viewmodel.AuthViewModel
 
-// ⬅️ CAMBIO CLAVE: Se añade la anotación para usar APIs experimentales
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddPetScreen(
@@ -24,6 +23,7 @@ fun AddPetScreen(
     onPetAdded: () -> Unit
 ) {
     val currentUser by vm.currentUser.collectAsStateWithLifecycle()
+    val petsState by vm.pets.collectAsStateWithLifecycle()
 
     // Estados para el formulario
     var nombre by remember { mutableStateOf("") }
@@ -34,9 +34,28 @@ fun AddPetScreen(
     var color by remember { mutableStateOf("") }
     var notasMedicas by remember { mutableStateOf("") }
 
-    var showSuccessDialog by remember { mutableStateOf(false) }
     var showErrorDialog by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+
+    // 🆕 NUEVO: Observar cuando se complete exitosamente la adición
+    LaunchedEffect(petsState.pets) {
+        // Si hay mascotas y no estamos cargando, asumimos éxito
+        if (!petsState.isLoading && petsState.error == null && petsState.pets.isNotEmpty()) {
+            // Buscar si la mascota que acabamos de agregar está en la lista
+            val nuevaMascota = petsState.pets.find { it.nombre == nombre && it.especie == especie }
+            if (nuevaMascota != null) {
+                onPetAdded()
+            }
+        }
+    }
+
+    // 🆕 NUEVO: Observar errores
+    LaunchedEffect(petsState.error) {
+        if (petsState.error != null) {
+            errorMessage = petsState.error ?: "Error desconocido"
+            showErrorDialog = true
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -97,6 +116,28 @@ fun AddPetScreen(
                 }
             }
 
+            // 🆕 NUEVO: Mostrar estado de carga/error
+            if (petsState.isLoading) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Text("Guardando mascota...")
+                    }
+                }
+            }
+
             // Formulario
             Card(
                 modifier = Modifier.fillMaxWidth()
@@ -111,7 +152,8 @@ fun AddPetScreen(
                         onValueChange = { nombre = it },
                         label = { Text("Nombre de la mascota *") },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        singleLine = true,
+                        isError = nombre.isBlank()
                     )
 
                     // Campo Especie
@@ -121,7 +163,8 @@ fun AddPetScreen(
                         label = { Text("Especie *") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        placeholder = { Text("Ej: Perro, Gato, Conejo") }
+                        placeholder = { Text("Ej: Perro, Gato, Conejo") },
+                        isError = especie.isBlank()
                     )
 
                     // Campo Raza
@@ -130,7 +173,8 @@ fun AddPetScreen(
                         onValueChange = { raza = it },
                         label = { Text("Raza *") },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        singleLine = true,
+                        isError = raza.isBlank()
                     )
 
                     // Campo Fecha Nacimiento
@@ -187,48 +231,38 @@ fun AddPetScreen(
                 onClick = {
                     if (nombre.isNotBlank() && especie.isNotBlank() && raza.isNotBlank()) {
                         vm.addPet(
-                            nombre = nombre,
-                            especie = especie,
-                            raza = raza,
+                            nombre = nombre.trim(),
+                            especie = especie.trim(),
+                            raza = raza.trim(),
                             fechaNacimiento = fechaNacimiento.ifBlank { null },
                             peso = peso.toDoubleOrNull(),
                             color = color.ifBlank { null },
                             notasMedicas = notasMedicas.ifBlank { null }
                         )
-                        showSuccessDialog = true
                     } else {
                         errorMessage = "Por favor completa los campos obligatorios"
                         showErrorDialog = true
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = nombre.isNotBlank() && especie.isNotBlank() && raza.isNotBlank(),
+                enabled = nombre.isNotBlank() && especie.isNotBlank() && raza.isNotBlank() && !petsState.isLoading,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary
                 )
             ) {
-                Text("Guardar Mascota", style = MaterialTheme.typography.titleMedium)
-            }
-        }
-    }
-
-    // Diálogo de éxito
-    if (showSuccessDialog) {
-        AlertDialog(
-            onDismissRequest = { showSuccessDialog = false },
-            title = { Text("¡Mascota Agregada!") },
-            text = { Text("La mascota se ha registrado correctamente.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showSuccessDialog = false
-                        onPetAdded()
-                    }
-                ) {
-                    Text("Aceptar")
+                if (petsState.isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Guardando...")
+                } else {
+                    Text("Guardar Mascota", style = MaterialTheme.typography.titleMedium)
                 }
             }
-        )
+        }
     }
 
     // Diálogo de error
@@ -244,7 +278,6 @@ fun AddPetScreen(
                     Text("Aceptar")
                 }
             }
-            // Asegúrate de que tu AlertDialog también está importado de material3
         )
     }
 }

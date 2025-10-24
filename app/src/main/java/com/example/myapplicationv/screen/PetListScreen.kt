@@ -20,7 +20,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myapplicationv.data.local.pet.PetEntity
 import com.example.myapplicationv.viewmodel.AuthViewModel
 
-// 1. CORRECCIÓN: Se añade la anotación para CenterAlignedTopAppBar
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PetListScreen(
@@ -29,20 +28,22 @@ fun PetListScreen(
     onAddPet: () -> Unit,
     onPetDetail: (Long) -> Unit
 ) {
-    // 2. CORRECCIÓN: Los estados deben ser declarados ANTES de usar el delegado 'by'
     val petsState by vm.pets.collectAsStateWithLifecycle()
-    val currentUserState by vm.currentUser.collectAsStateWithLifecycle() // Renombrado para claridad
-    val currentUser = currentUserState // Se usa aquí para acceder al valor, no como delegado
+    val currentUserState by vm.currentUser.collectAsStateWithLifecycle()
+    val currentUser = currentUserState
 
-    // Cargar mascotas cuando se abre la pantalla
+    // 🆕 MEJORADO: Cargar mascotas cuando se abre la pantalla o cuando cambia el usuario
     LaunchedEffect(currentUser.clientId) {
-        // 3. CORRECCIÓN: Se especifica el tipo explícitamente para takeIf
-        // También se usa el valor directo de currentUser
-        currentUser.clientId
-            .takeIf { id: Long -> id > 0 }
-            ?.let { clientId ->
-                vm.loadPetsForClient(clientId)
-            }
+        if (currentUser.clientId > 0L) {
+            vm.loadPetsForClient(currentUser.clientId)
+        }
+    }
+
+    // 🆕 NUEVO: También cargar cuando volvemos a esta pantalla después de agregar
+    LaunchedEffect(Unit) {
+        if (currentUser.clientId > 0L) {
+            vm.loadPetsForClient(currentUser.clientId)
+        }
     }
 
     Scaffold(
@@ -50,7 +51,7 @@ fun PetListScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = "Mis Mascotas",
+                        text = "Mis Mascotas (${petsState.pets.size})",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
@@ -76,7 +77,7 @@ fun PetListScreen(
             }
         }
     ) { innerPadding ->
-        if (petsState.isLoading) {
+        if (petsState.isLoading && petsState.pets.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -85,7 +86,7 @@ fun PetListScreen(
             ) {
                 CircularProgressIndicator()
             }
-        } else if (petsState.error != null) {
+        } else if (petsState.error != null && petsState.pets.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -101,8 +102,19 @@ fun PetListScreen(
                     Text(
                         text = petsState.error ?: "Error desconocido",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center
                     )
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            currentUser.clientId.takeIf { it > 0 }?.let {
+                                vm.loadPetsForClient(it)
+                            }
+                        }
+                    ) {
+                        Text("Reintentar")
+                    }
                 }
             }
         } else if (petsState.pets.isEmpty()) {
@@ -119,7 +131,46 @@ fun PetListScreen(
 
 @Composable
 private fun EmptyPetsState(onAddPet: () -> Unit, modifier: Modifier = Modifier) {
-    // ... (rest of the code unchanged)
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(16.dp)
+        ) {
+            Icon(
+                Icons.Filled.Pets,
+                contentDescription = "Sin mascotas",
+                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                modifier = Modifier.size(64.dp)
+            )
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = "No tienes mascotas registradas",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Agrega tu primera mascota para comenzar",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(24.dp))
+            Button(
+                onClick = onAddPet,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Agregar Mascota")
+            }
+        }
+    }
 }
 
 @Composable
@@ -128,10 +179,63 @@ private fun PetsList(
     onPetClick: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // ... (rest of the code unchanged)
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        items(pets, key = { it.id }) { pet ->
+            PetCard(pet = pet, onClick = { onPetClick(pet.id) })
+        }
+    }
 }
 
 @Composable
 private fun PetCard(pet: PetEntity, onClick: () -> Unit) {
-    // ... (rest of the code unchanged)
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Filled.Pets,
+                contentDescription = "Mascota",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(40.dp)
+            )
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = pet.nombre,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "${pet.especie} - ${pet.raza}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                if (pet.peso != null) {
+                    Text(
+                        text = "Peso: ${pet.peso} kg",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                }
+                if (pet.color != null) {
+                    Text(
+                        text = "Color: ${pet.color}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                }
+            }
+        }
+    }
 }
