@@ -10,31 +10,33 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.example.myapplicationv.domain.validation.*
 import com.example.myapplicationv.data.repository.VetRepository
+import com.example.myapplicationv.data.local.storage.UserPreferences
+import kotlinx.coroutines.flow.first
 
 // ----------------- ESTADOS DE UI (observable con StateFlow) -----------------
 
-data class LoginUiState(                                   // Estado de la pantalla Login
-    val email: String = "",                                // Campo email
-    val pass: String = "",                                 // Campo contraseña (texto)
-    val emailError: String? = null,                        // Error de email
-    val passError: String? = null,                         // (Opcional) error de pass en login
-    val isSubmitting: Boolean = false,                     // Flag de carga
-    val canSubmit: Boolean = false,                        // Habilitar botón
-    val success: Boolean = false,                          // Resultado OK
-    val errorMsg: String? = null,                          // Error global (credenciales inválidas)
-    val currentClient: ClientUiState? = null               // Info del cliente logueado
+data class LoginUiState(
+    val email: String = "",
+    val pass: String = "",
+    val emailError: String? = null,
+    val passError: String? = null,
+    val isSubmitting: Boolean = false,
+    val canSubmit: Boolean = false,
+    val success: Boolean = false,
+    val errorMsg: String? = null,
+    val currentClient: ClientUiState? = null
 )
 
-data class RegisterUiState(                                // Estado de la pantalla Registro
-    val name: String = "",                                 // Nombre
-    val email: String = "",                                // Email
-    val phone: String = "",                                // Teléfono
-    val address: String = "",                              // Dirección
-    val emergencyContact: String = "",                     // Contacto emergencia
-    val pass: String = "",                                 // Contraseña
-    val confirm: String = "",                              // Confirmación
+data class RegisterUiState(
+    val name: String = "",
+    val email: String = "",
+    val phone: String = "",
+    val address: String = "",
+    val emergencyContact: String = "",
+    val pass: String = "",
+    val confirm: String = "",
 
-    val nameError: String? = null,                         // Errores por campo
+    val nameError: String? = null,
     val emailError: String? = null,
     val phoneError: String? = null,
     val addressError: String? = null,
@@ -48,7 +50,6 @@ data class RegisterUiState(                                // Estado de la panta
     val errorMsg: String? = null
 )
 
-// Estado para información del cliente logueado
 data class ClientUiState(
     val clientId: Long = 0L,
     val name: String = "",
@@ -56,7 +57,6 @@ data class ClientUiState(
     val petsCount: Int = 0
 )
 
-//  Estado para gestión de mascotas
 data class PetsUiState(
     val pets: List<PetEntity> = emptyList(),
     val isLoading: Boolean = false,
@@ -64,23 +64,71 @@ data class PetsUiState(
     val selectedPet: PetEntity? = null
 )
 
+// 🆕 NUEVO: Estado para manejar mensajes de sesión
+data class SessionState(
+    val isLoggedIn: Boolean = false,
+    val loginMessage: String? = null,
+    val logoutMessage: String? = null,
+    val showMessage: Boolean = false
+)
+
 class AuthViewModel(
-    private val repository: VetRepository
+    private val repository: VetRepository,
+    private val userPreferences: UserPreferences
 ) : ViewModel() {
 
-    // Flujos de estado para observar desde la UI
+    // Estados para sesión
+    private val _isUserLoggedIn = MutableStateFlow(false)
+    val isUserLoggedIn: StateFlow<Boolean> = _isUserLoggedIn
+
+    private val _currentUser = MutableStateFlow(ClientUiState())
+    val currentUser: StateFlow<ClientUiState> = _currentUser
+
+    // 🆕 NUEVO: Estado para mensajes de sesión
+    private val _sessionState = MutableStateFlow(SessionState())
+    val sessionState: StateFlow<SessionState> = _sessionState
+
+    // Flujos de estado existentes
     private val _login = MutableStateFlow(LoginUiState())
     val login: StateFlow<LoginUiState> = _login
 
     private val _register = MutableStateFlow(RegisterUiState())
     val register: StateFlow<RegisterUiState> = _register
 
-    //  Estado para mascotas
     private val _pets = MutableStateFlow(PetsUiState())
     val pets: StateFlow<PetsUiState> = _pets
 
-    // Login handlers
+    // Bloque INIT para verificar sesión al inicio del ViewModel
+    init {
+        checkUserSession()
+    }
 
+    // Verificar si hay sesión activa y restaurar el estado
+    private fun checkUserSession() {
+        viewModelScope.launch {
+            val loggedIn = userPreferences.isLoggedIn.first()
+            _isUserLoggedIn.value = loggedIn
+            _sessionState.update { it.copy(isLoggedIn = loggedIn) }
+
+            if (loggedIn) {
+                val email = userPreferences.userEmail.first()
+                val name = userPreferences.userName.first()
+                val id = userPreferences.userId.first()
+
+                val clientState = ClientUiState(
+                    clientId = id.toLongOrNull() ?: 0L,
+                    name = name,
+                    email = email
+                )
+
+                _currentUser.value = clientState
+                _login.update { it.copy(currentClient = clientState) }
+                id.toLongOrNull()?.let { loadPetsForClient(it) }
+            }
+        }
+    }
+
+    // Login handlers
     fun onLoginEmailChange(value: String) {
         _login.update { it.copy(email = value, emailError = validateEmail(value)) }
         recomputeLoginCanSubmit()
@@ -97,6 +145,7 @@ class AuthViewModel(
         _login.update { it.copy(canSubmit = can) }
     }
 
+    // 🔄 MODIFICADO: submitLogin con mensajes de sesión
     fun submitLogin() {
         val s = _login.value
         if (!s.canSubmit || s.isSubmitting) return
@@ -104,13 +153,17 @@ class AuthViewModel(
             _login.update { it.copy(isSubmitting = true, errorMsg = null, success = false) }
             delay(500)
 
-            // CONSULTA REAL a la BD vía VetRepository
             val result = repository.login(s.email.trim(), s.pass)
 
             _login.update {
                 if (result.isSuccess) {
                     val client = result.getOrNull()
-                    // 🆕 NUEVO: Guardar info del cliente y cargar sus mascotas
+
+                    client?.let {
+                        userPreferences.setUserInfo(it.email, it.name, it.id.toString())
+                        userPreferences.setLoggedIn(true)
+                    }
+
                     val clientState = client?.let {
                         ClientUiState(
                             clientId = it.id,
@@ -118,7 +171,20 @@ class AuthViewModel(
                             email = it.email
                         )
                     }
-                    // Cargar mascotas del cliente
+
+                    _isUserLoggedIn.value = true
+                    _currentUser.value = clientState ?: ClientUiState()
+
+                    // 🆕 NUEVO: Mostrar mensaje de éxito
+                    _sessionState.update { session ->
+                        session.copy(
+                            isLoggedIn = true,
+                            loginMessage = "¡Bienvenido ${client?.name ?: "Usuario"}!",
+                            showMessage = true,
+                            logoutMessage = null
+                        )
+                    }
+
                     client?.id?.let { loadPetsForClient(it) }
 
                     it.copy(
@@ -128,6 +194,13 @@ class AuthViewModel(
                         currentClient = clientState
                     )
                 } else {
+                    // 🆕 NUEVO: Mensaje de error
+                    _sessionState.update { session ->
+                        session.copy(
+                            loginMessage = "Error al iniciar sesión: ${result.exceptionOrNull()?.message}",
+                            showMessage = true
+                        )
+                    }
                     it.copy(
                         isSubmitting = false,
                         success = false,
@@ -142,8 +215,18 @@ class AuthViewModel(
         _login.update { it.copy(success = false, errorMsg = null) }
     }
 
-    // Registro handlers
+    // 🆕 NUEVO: Función para limpiar mensajes de sesión
+    fun clearSessionMessage() {
+        _sessionState.update {
+            it.copy(
+                showMessage = false,
+                loginMessage = null,
+                logoutMessage = null
+            )
+        }
+    }
 
+    // Registro handlers
     fun onNameChange(value: String) {
         val filtered = value.filter { it.isLetter() || it.isWhitespace() }
         _register.update {
@@ -165,13 +248,11 @@ class AuthViewModel(
         recomputeRegisterCanSubmit()
     }
 
-    // Handler para dirección
     fun onAddressChange(value: String) {
         _register.update { it.copy(address = value, addressError = validateAddress(value)) }
         recomputeRegisterCanSubmit()
     }
 
-    // Handler para contacto de emergencia
     fun onEmergencyContactChange(value: String) {
         val digitsOnly = value.filter { it.isDigit() }
         _register.update {
@@ -196,7 +277,6 @@ class AuthViewModel(
 
     private fun recomputeRegisterCanSubmit() {
         val s = _register.value
-        // Incluir nuevos campos en la validación
         val noErrors = listOf(
             s.nameError, s.emailError, s.phoneError,
             s.addressError, s.emergencyContactError, s.passError, s.confirmError
@@ -204,7 +284,7 @@ class AuthViewModel(
 
         val filled = s.name.isNotBlank() && s.email.isNotBlank() &&
                 s.phone.isNotBlank() && s.pass.isNotBlank() &&
-                s.confirm.isNotBlank() // Dirección y contacto son opcionales
+                s.confirm.isNotBlank()
 
         _register.update { it.copy(canSubmit = noErrors && filled) }
     }
@@ -216,18 +296,24 @@ class AuthViewModel(
             _register.update { it.copy(isSubmitting = true, errorMsg = null, success = false) }
             delay(700)
 
-            // INSERTA EN BD vía VetRepository (con nuevos campos)
             val result = repository.register(
                 name = s.name.trim(),
                 email = s.email.trim(),
                 phone = s.phone.trim(),
-                address = s.address.ifBlank { null },        // 🆕 NUEVO: Dirección
-                emergencyContact = s.emergencyContact.ifBlank { null }, // 🆕 NUEVO: Contacto
+                address = s.address.ifBlank { null },
+                emergencyContact = s.emergencyContact.ifBlank { null },
                 password = s.pass
             )
 
             _register.update {
                 if (result.isSuccess) {
+                    // 🆕 NUEVO: Mensaje de registro exitoso
+                    _sessionState.update { session ->
+                        session.copy(
+                            loginMessage = "¡Cuenta creada exitosamente! Ya puedes iniciar sesión",
+                            showMessage = true
+                        )
+                    }
                     it.copy(isSubmitting = false, success = true, errorMsg = null)
                 } else {
                     it.copy(
@@ -245,7 +331,6 @@ class AuthViewModel(
     }
 
     // OPERACIONES PARA MASCOTAS
-
     fun loadPetsForClient(clientId: Long) {
         viewModelScope.launch {
             _pets.update { it.copy(isLoading = true, error = null) }
@@ -253,7 +338,10 @@ class AuthViewModel(
                 val petsList = repository.getPetsByOwner(clientId)
                 _pets.update { it.copy(pets = petsList, isLoading = false) }
 
-                // 🆕 Actualizar contador de mascotas en el estado de login
+                _currentUser.update { client ->
+                    client.copy(petsCount = petsList.size)
+                }
+
                 _login.update { loginState ->
                     loginState.currentClient?.let { client ->
                         loginState.copy(
@@ -261,13 +349,13 @@ class AuthViewModel(
                         )
                     } ?: loginState
                 }
+
             } catch (e: Exception) {
                 _pets.update { it.copy(error = "Error al cargar mascotas", isLoading = false) }
             }
         }
     }
 
-    // Agregar mascota
     fun addPet(
         nombre: String,
         especie: String,
@@ -294,7 +382,6 @@ class AuthViewModel(
                 )
 
                 if (result.isSuccess) {
-                    // Recargar la lista de mascotas
                     loadPetsForClient(clientId)
                 } else {
                     _pets.update { it.copy(
@@ -308,12 +395,10 @@ class AuthViewModel(
         }
     }
 
-    // Actualizar peso de mascota
     fun updatePetWeight(petId: Long, nuevoPeso: Double) {
         viewModelScope.launch {
             try {
                 repository.updatePetWeight(petId, nuevoPeso)
-                // Recargar mascotas para reflejar el cambio
                 _login.value.currentClient?.clientId?.let { loadPetsForClient(it) }
             } catch (e: Exception) {
                 _pets.update { it.copy(error = "Error al actualizar peso") }
@@ -321,12 +406,10 @@ class AuthViewModel(
         }
     }
 
-    // Eliminar mascota
     fun deletePet(petId: Long) {
         viewModelScope.launch {
             try {
                 repository.deletePet(petId)
-                // Recargar mascotas para reflejar el cambio
                 _login.value.currentClient?.clientId?.let { loadPetsForClient(it) }
             } catch (e: Exception) {
                 _pets.update { it.copy(error = "Error al eliminar mascota") }
@@ -334,9 +417,26 @@ class AuthViewModel(
         }
     }
 
-    // Cerrar sesión
+    // 🔄 MODIFICADO: logout con mensaje de sesión
     fun logout() {
-        _login.update { LoginUiState() }
-        _pets.update { PetsUiState() }
+        viewModelScope.launch {
+            userPreferences.clearUserData()
+
+            // 🆕 NUEVO: Mensaje de logout
+            _sessionState.update { session ->
+                session.copy(
+                    isLoggedIn = false,
+                    logoutMessage = "Sesión cerrada correctamente",
+                    showMessage = true,
+                    loginMessage = null
+                )
+            }
+
+            _isUserLoggedIn.value = false
+            _currentUser.value = ClientUiState()
+            _pets.update { PetsUiState() }
+            _login.update { LoginUiState() }
+            _register.update { RegisterUiState() }
+        }
     }
 }

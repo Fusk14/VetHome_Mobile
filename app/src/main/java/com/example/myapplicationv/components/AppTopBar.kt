@@ -18,7 +18,9 @@ fun AppTopBar(
     onHome: () -> Unit,
     onMascotas: () -> Unit,
     onCitas: () -> Unit,
-    onLogin: () -> Unit
+    onLogin: () -> Unit,
+    isUserLoggedIn: Boolean = false,
+    userName: String = ""
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -29,7 +31,11 @@ fun AppTopBar(
         ),
         title = {
             Text(
-                text = "VetHome - Veterinaria",
+                text = if (isUserLoggedIn && userName.isNotBlank()) {
+                    "VetHome - Hola, ${userName.take(10)}" //TÍTULO PERSONALIZADO
+                } else {
+                    "VetHome - Veterinaria"
+                },
                 style = MaterialTheme.typography.titleLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -54,9 +60,14 @@ fun AppTopBar(
             IconButton(onClick = onCitas) {
                 Icon(Icons.Filled.Event, contentDescription = "Citas")
             }
-            IconButton(onClick = onLogin) {
-                Icon(Icons.Filled.Person, contentDescription = "Login")
+
+            //  Mostrar icono de persona solo si no está logueado
+            if (!isUserLoggedIn) {
+                IconButton(onClick = onLogin) {
+                    Icon(Icons.Filled.Person, contentDescription = "Login")
+                }
             }
+
             IconButton(onClick = { showMenu = true }) {
                 Icon(Icons.Filled.MoreVert, contentDescription = "Más opciones")
             }
@@ -77,10 +88,13 @@ fun AppTopBar(
                     text = { Text("Mis Citas") },
                     onClick = { showMenu = false; onCitas() }
                 )
-                DropdownMenuItem(
-                    text = { Text("Login") },
-                    onClick = { showMenu = false; onLogin() }
-                )
+                // Mostrar login solo si no está logueado
+                if (!isUserLoggedIn) {
+                    DropdownMenuItem(
+                        text = { Text("Login") },
+                        onClick = { showMenu = false; onLogin() }
+                    )
+                }
             }
         }
     )

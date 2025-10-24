@@ -9,23 +9,23 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.navigation.compose.rememberNavController
 import com.example.myapplicationv.navigation.AppNavGraph
+import com.example.myapplicationv.ui.theme.VetHomeTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            AppRoot()
+            VetHomeApp()
         }
     }
 }
 
-//parche agregado
-//asdasd
 @Composable
-fun AppRoot() {
+fun VetHomeApp() {
     val navController = rememberNavController()
-    MaterialTheme {
+
+    VetHomeTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
             AppNavGraph(navController = navController)
         }

@@ -1,5 +1,6 @@
 package com.example.myapplicationv.navigation
 
+
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -14,40 +15,48 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.runtime.rememberCoroutineScope
 
-// IMPORTS PARA VIEWMODEl
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.lifecycle.compose.collectAsStateWithLifecycle // 🆕 IMPORT CORRECTO
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplicationv.data.local.database.AppDatabase
 import com.example.myapplicationv.data.repository.VetRepository
 import com.example.myapplicationv.viewmodel.AuthViewModel
 import com.example.myapplicationv.viewmodel.AuthViewModelFactory
+import com.example.myapplicationv.data.local.storage.UserPreferences
 
-// IMPORTS DE COMPONENTES
 import com.example.myapplicationv.ui.components.AppTopBar
 import com.example.myapplicationv.ui.components.AppDrawer
 import com.example.myapplicationv.ui.components.defaultDrawerItems
 
-// IMPORTS DE PANTALLAS
 import com.example.myapplicationv.ui.screen.HomeScreen
 import com.example.myapplicationv.ui.screen.LoginScreenVm
 import com.example.myapplicationv.ui.screen.RegisterScreenVm
+
+
 
 @Composable
 fun AppNavGraph(navController: NavHostController) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    // CREAR VIEWMODEL CON DEPENDENCIAS
     val context = LocalContext.current
-    val database = AppDatabase.getInstance(context)
-    val vetRepository = VetRepository(
-        clientDao = database.clientDao(),
-        petDao = database.petDao()
-    )
-    val authViewModel: AuthViewModel = viewModel(
-        factory = AuthViewModelFactory(vetRepository)
-    )
+    val database = remember { AppDatabase.getInstance(context) }
+    val vetRepository = remember {
+        VetRepository(
+            clientDao = database.clientDao(),
+            petDao = database.petDao()
+        )
+    }
+    val userPreferences = remember { UserPreferences.getInstance(context) }
+    val viewModelFactory = remember {
+        AuthViewModelFactory(vetRepository, userPreferences)
+    }
 
-    // HELPERS DE NAVEGACIÓN MEJORADOS
+    // ✅ SOLUCIÓN ALTERNATIVA: Crear el ViewModel una sola vez
+    val authViewModel: AuthViewModel = viewModel(factory = viewModelFactory)
+
+    // Helpers de navegación
     val goHome: () -> Unit = {
         navController.navigate(Route.Home.path) {
             popUpTo(Route.Home.path) { inclusive = true }
@@ -55,22 +64,14 @@ fun AppNavGraph(navController: NavHostController) {
     }
 
     val goLogin: () -> Unit = {
-        navController.navigate(Route.Login.path) {
-            // Limpiar back stack al ir a login
-            popUpTo(Route.Home.path) { inclusive = false }
-        }
+        navController.navigate(Route.Login.path)
     }
-
     val goRegister: () -> Unit = {
-        navController.navigate(Route.Register.path) {
-            popUpTo(Route.Login.path) { inclusive = false }
-        }
+        navController.navigate(Route.Register.path)
     }
-
     val goMascotas: () -> Unit = {
         navController.navigate(Route.Mascotas.path)
     }
-
     val goCitas: () -> Unit = {
         navController.navigate(Route.Citas.path)
     }
@@ -78,6 +79,10 @@ fun AppNavGraph(navController: NavHostController) {
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
+            // ✅ Obtener estados aquí para el drawer
+            val isLoggedIn by authViewModel.isUserLoggedIn.collectAsStateWithLifecycle()
+            val currentUser by authViewModel.currentUser.collectAsStateWithLifecycle()
+
             AppDrawer(
                 currentRoute = null,
                 items = defaultDrawerItems(
@@ -95,12 +100,19 @@ fun AppNavGraph(navController: NavHostController) {
                     },
                     onLogin = {
                         scope.launch { drawerState.close() }
-                        goLogin()
+                        if (!isLoggedIn) {
+                            goLogin()
+                        }
                     }
                 )
             )
         }
     ) {
+        // ✅ Obtener estados aquí para el Scaffold
+        val isLoggedIn by authViewModel.isUserLoggedIn.collectAsStateWithLifecycle()
+        val currentUser by authViewModel.currentUser.collectAsStateWithLifecycle()
+        val sessionState by authViewModel.sessionState.collectAsStateWithLifecycle()
+
         Scaffold(
             topBar = {
                 AppTopBar(
@@ -108,7 +120,9 @@ fun AppNavGraph(navController: NavHostController) {
                     onHome = goHome,
                     onMascotas = goMascotas,
                     onCitas = goCitas,
-                    onLogin = goLogin
+                    onLogin = goLogin,
+                    isUserLoggedIn = isLoggedIn,
+                    userName = currentUser.name
                 )
             }
         ) { innerPadding ->
@@ -117,51 +131,43 @@ fun AppNavGraph(navController: NavHostController) {
                 startDestination = Route.Home.path,
                 modifier = Modifier.padding(innerPadding)
             ) {
-                // PANTALLA HOME
                 composable(Route.Home.path) {
                     HomeScreen(
                         onGoLogin = goLogin,
                         onGoMascotas = goMascotas,
-                        onGoCitas = goCitas
+                        onGoCitas = goCitas,
+                        onLogout = {
+                            authViewModel.logout()
+                            navController.navigate(Route.Home.path) {
+                                popUpTo(Route.Home.path) { inclusive = true }
+                            }
+                        },
+                        isUserLoggedIn = isLoggedIn,
+                        userName = currentUser.name,
+                        sessionMessage = if (sessionState.showMessage) {
+                            sessionState.loginMessage ?: sessionState.logoutMessage
+                        } else null,
+                        onMessageShown = { authViewModel.clearSessionMessage() }
                     )
                 }
 
-                // 🆕 PANTALLA LOGIN
                 composable(Route.Login.path) {
                     LoginScreenVm(
-                        vm = authViewModel,
+                        vm = authViewModel, // ✅ Usar la misma instancia
                         onLoginOkNavigateHome = goHome,
                         onGoRegister = goRegister
                     )
                 }
 
-                // 🆕 PANTALLA REGISTER
                 composable(Route.Register.path) {
                     RegisterScreenVm(
-                        vm = authViewModel,
+                        vm = authViewModel, // ✅ Usar la misma instancia
                         onRegisteredNavigateLogin = goLogin,
                         onGoLogin = goLogin
                     )
                 }
 
-                // PANTALLAS TEMPORALES (para desarrollo)
-                composable(Route.Mascotas.path) {
-                    // Pantalla temporal de mascotas
-                    HomeScreen(
-                        onGoLogin = goLogin,
-                        onGoMascotas = goMascotas,
-                        onGoCitas = goCitas
-                    )
-                }
-
-                composable(Route.Citas.path) {
-                    // Pantalla temporal de citas
-                    HomeScreen(
-                        onGoLogin = goLogin,
-                        onGoMascotas = goMascotas,
-                        onGoCitas = goCitas
-                    )
-                }
+                // ... resto de pantallas
             }
         }
     }
