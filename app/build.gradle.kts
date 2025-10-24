@@ -87,4 +87,9 @@ dependencies {
 
     // NUEVAS DEPENDENCIAS DEL PRIMER ARCHIVO
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4") // <-- NUEVA
+
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("io.coil-kt:coil-compose:2.4.0")
+
+
 }
