@@ -47,10 +47,19 @@ fun defaultDrawerItems(
     onHome: () -> Unit,
     onMascotas: () -> Unit,
     onCitas: () -> Unit,
-    onLogin: () -> Unit
-): List<DrawerItem> = listOf(
-    DrawerItem("Inicio", Icons.Filled.Home, onHome),
-    DrawerItem("Mis Mascotas", Icons.Filled.Pets, onMascotas),
-    DrawerItem("Mis Citas", Icons.Filled.Event, onCitas),
-    DrawerItem("Login", Icons.Filled.Person, onLogin)
-)
+    onLogin: () -> Unit,
+    isUserLoggedIn: Boolean = false
+): List<DrawerItem> {
+    val baseItems = mutableListOf(
+        DrawerItem("Inicio", Icons.Filled.Home, onHome),
+        DrawerItem("Mis Mascotas", Icons.Filled.Pets, onMascotas),
+        DrawerItem("Mis Citas", Icons.Filled.Event, onCitas)
+    )
+
+    // Solo agregar Login si no está logueado
+    if (!isUserLoggedIn) {
+        baseItems.add(DrawerItem("Login", Icons.Filled.Person, onLogin))
+    }
+
+    return baseItems
+}
