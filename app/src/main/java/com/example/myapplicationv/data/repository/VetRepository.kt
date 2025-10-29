@@ -1,15 +1,19 @@
 package com.example.myapplicationv.data.repository
 
+import com.example.myapplicationv.data.local.appointment.AppointmentDao
+import com.example.myapplicationv.data.local.appointment.AppointmentEntity
 import com.example.myapplicationv.data.local.user.ClientDao
 import com.example.myapplicationv.data.local.user.ClientEntity
 import com.example.myapplicationv.data.local.pet.PetDao
 import com.example.myapplicationv.data.local.pet.PetEntity
 import com.example.myapplicationv.domain.validation.* // ← Importar validadores
 import kotlinx.coroutines.flow.Flow
+import java.util.Date
 
 class VetRepository(
     private val clientDao: ClientDao,
-    private val petDao: PetDao
+    private val petDao: PetDao,
+    private val appointmentDao: AppointmentDao
 ) {
 
     //validacion del login
@@ -81,6 +85,9 @@ class VetRepository(
         return kotlinx.coroutines.flow.flow {
             emit(clientDao.getAll())
         }
+    }
+    suspend fun getPetById(petId: Long): PetEntity? {
+        return petDao.getById(petId)
     }
 
     //agregar una mascota
@@ -174,5 +181,32 @@ class VetRepository(
     suspend fun getTotalPetsCount(): Int {
         // Para esta demo, contamos todas las mascotas
         return petDao.getPetsByOwner(1).size // Simplificado para demo
+    }
+
+    // Operaciones para citas
+    suspend fun getAppointmentsByOwner(ownerId: Long): List<AppointmentEntity> {
+        return appointmentDao.getAppointmentsByOwner(ownerId)
+    }
+
+    suspend fun addAppointment(
+        ownerId: Long,
+        petId: Long,
+        date: Date,
+        reason: String
+    ): Result<Long> {
+        val owner = clientDao.getById(ownerId)
+        if (owner == null) {
+            return Result.failure(IllegalArgumentException("Cliente no encontrado"))
+        }
+
+        val appointmentId = appointmentDao.insert(
+            AppointmentEntity(
+                ownerId = ownerId,
+                petId = petId,
+                date = date,
+                reason = reason
+            )
+        )
+        return Result.success(appointmentId)
     }
 }

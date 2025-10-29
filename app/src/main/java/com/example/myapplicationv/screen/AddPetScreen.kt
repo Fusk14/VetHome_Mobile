@@ -1,72 +1,64 @@
 package com.example.myapplicationv.screen
 
+import android.app.DatePickerDialog
+import android.widget.DatePicker
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myapplicationv.viewmodel.AuthViewModel
+import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddPetScreen(
     vm: AuthViewModel,
-    onBack: () -> Unit,
-    onPetAdded: () -> Unit
+    onPetAdded: () -> Unit,
+    onBack: () -> Unit
 ) {
-    val currentUser by vm.currentUser.collectAsStateWithLifecycle()
-    val petsState by vm.pets.collectAsStateWithLifecycle()
+    // --- Estados para los campos del formulario ---
+    var petName by remember { mutableStateOf("") }
+    var species by remember { mutableStateOf("") }
+    var breed by remember { mutableStateOf("") }
+    var birthDate by remember { mutableStateOf("") }
 
-    // Estados para el formulario
-    var nombre by remember { mutableStateOf("") }
-    var especie by remember { mutableStateOf("") }
-    var raza by remember { mutableStateOf("") }
-    var fechaNacimiento by remember { mutableStateOf("") }
-    var peso by remember { mutableStateOf("") }
-    var color by remember { mutableStateOf("") }
-    var notasMedicas by remember { mutableStateOf("") }
+    // --- Lógica del Calendario ---
+    val context = LocalContext.current
+    val calendar = Calendar.getInstance()
 
-    var showErrorDialog by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf("") }
+    val datePickerDialog = DatePickerDialog(
+        context,
+        { _: DatePicker, year: Int, month: Int, dayOfMonth: Int ->
+            // Formateamos la fecha para guardarla como "YYYY-MM-DD"
+            birthDate = "$year-${month + 1}-${dayOfMonth}"
+        },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    )
+    // No se pueden seleccionar fechas futuras para un nacimiento
+    datePickerDialog.datePicker.maxDate = calendar.timeInMillis
 
-    // 🆕 NUEVO: Observar cuando se complete exitosamente la adición
-    LaunchedEffect(petsState.pets) {
-        // Si hay mascotas y no estamos cargando, asumimos éxito
-        if (!petsState.isLoading && petsState.error == null && petsState.pets.isNotEmpty()) {
-            // Buscar si la mascota que acabamos de agregar está en la lista
-            val nuevaMascota = petsState.pets.find { it.nombre == nombre && it.especie == especie }
-            if (nuevaMascota != null) {
-                onPetAdded()
-            }
-        }
-    }
-
-    // 🆕 NUEVO: Observar errores
-    LaunchedEffect(petsState.error) {
-        if (petsState.error != null) {
-            errorMessage = petsState.error ?: "Error desconocido"
-            showErrorDialog = true
-        }
-    }
-
+    // --- Estructura de la Pantalla ---
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = "Agregar Mascota",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+                title = { Text("Agregar Mascota", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Volver")
@@ -79,205 +71,111 @@ fun AddPetScreen(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(rememberScrollState()) // Permite hacer scroll si el contenido es muy largo
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp), // Espacio entre elementos
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Filled.Pets,
-                        contentDescription = "Agregar mascota",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = "Nueva Mascota",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "Completa la información de tu mascota",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-            }
-
-            // 🆕 NUEVO: Mostrar estado de carga/error
-            if (petsState.isLoading) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Text("Guardando mascota...")
-                    }
-                }
-            }
-
-            // Formulario
-            Card(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Campo Nombre
-                    OutlinedTextField(
-                        value = nombre,
-                        onValueChange = { nombre = it },
-                        label = { Text("Nombre de la mascota *") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        isError = nombre.isBlank()
-                    )
-
-                    // Campo Especie
-                    OutlinedTextField(
-                        value = especie,
-                        onValueChange = { especie = it },
-                        label = { Text("Especie *") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        placeholder = { Text("Ej: Perro, Gato, Conejo") },
-                        isError = especie.isBlank()
-                    )
-
-                    // Campo Raza
-                    OutlinedTextField(
-                        value = raza,
-                        onValueChange = { raza = it },
-                        label = { Text("Raza *") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        isError = raza.isBlank()
-                    )
-
-                    // Campo Fecha Nacimiento
-                    OutlinedTextField(
-                        value = fechaNacimiento,
-                        onValueChange = { fechaNacimiento = it },
-                        label = { Text("Fecha de nacimiento") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        placeholder = { Text("YYYY-MM-DD") }
-                    )
-
-                    // Campo Peso
-                    OutlinedTextField(
-                        value = peso,
-                        onValueChange = { peso = it },
-                        label = { Text("Peso (kg)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        placeholder = { Text("Ej: 5.5") }
-                    )
-
-                    // Campo Color
-                    OutlinedTextField(
-                        value = color,
-                        onValueChange = { color = it },
-                        label = { Text("Color") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-
-                    // Campo Notas Médicas
-                    OutlinedTextField(
-                        value = notasMedicas,
-                        onValueChange = { notasMedicas = it },
-                        label = { Text("Notas médicas") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(100.dp),
-                        maxLines = 4
-                    )
-                }
-            }
-
-            // Información de campos obligatorios
-            Text(
-                text = "* Campos obligatorios",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            // --- Icono de Cabecera ---
+            Icon(
+                imageVector = Icons.Default.Pets,
+                contentDescription = "Icono de Mascota",
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.primary
             )
 
-            // Botón Guardar
-            Button(
-                onClick = {
-                    if (nombre.isNotBlank() && especie.isNotBlank() && raza.isNotBlank()) {
-                        vm.addPet(
-                            nombre = nombre.trim(),
-                            especie = especie.trim(),
-                            raza = raza.trim(),
-                            fechaNacimiento = fechaNacimiento.ifBlank { null },
-                            peso = peso.toDoubleOrNull(),
-                            color = color.ifBlank { null },
-                            notasMedicas = notasMedicas.ifBlank { null }
+            Text(
+                "Nueva Mascota",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // --- Campos del Formulario ---
+            OutlinedTextField(
+                value = petName,
+                onValueChange = { petName = it },
+                label = { Text("Nombre de la mascota *") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Next
+                )
+            )
+
+            OutlinedTextField(
+                value = species,
+                onValueChange = { species = it },
+                label = { Text("Especie (ej. Perro, Gato) *") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Next
+                )
+            )
+
+            OutlinedTextField(
+                value = breed,
+                onValueChange = { breed = it },
+                label = { Text("Raza *") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Next
+                )
+            )
+
+            // --- Selector de Fecha de Nacimiento ---
+            OutlinedTextField(
+                value = birthDate,
+                onValueChange = { }, // El valor cambia solo desde el diálogo
+                label = { Text("Fecha de Nacimiento") },
+                readOnly = true, // Evita que el usuario escriba manualmente
+                trailingIcon = {
+                    IconButton(onClick = { datePickerDialog.show() }) {
+                        Icon(
+                            Icons.Default.DateRange,
+                            contentDescription = "Seleccionar fecha de nacimiento"
                         )
-                    } else {
-                        errorMessage = "Por favor completa los campos obligatorios"
-                        showErrorDialog = true
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = nombre.isNotBlank() && especie.isNotBlank() && raza.isNotBlank() && !petsState.isLoading,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
-            ) {
-                if (petsState.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Guardando...")
-                } else {
-                    Text("Guardar Mascota", style = MaterialTheme.typography.titleMedium)
-                }
-            }
-        }
-    }
+                placeholder = { Text("YYYY-MM-DD") }
+            )
 
-    // Diálogo de error
-    if (showErrorDialog) {
-        AlertDialog(
-            onDismissRequest = { showErrorDialog = false },
-            title = { Text("Error") },
-            text = { Text(errorMessage) },
-            confirmButton = {
-                Button(
-                    onClick = { showErrorDialog = false }
-                ) {
-                    Text("Aceptar")
-                }
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // --- Botón para Agregar Mascota ---
+            Button(
+                onClick = {
+                    // Normalizamos el input: primera letra mayúscula, resto minúscula.
+                    val normalizedSpecies = species.trim().replaceFirstChar {
+                        if (it.isLowerCase()) it.titlecase() else it.toString()
+                    }
+
+                    vm.addPet(
+                        nombre = petName.trim(),
+                        especie = normalizedSpecies,
+                        raza = breed.trim(),
+                        fechaNacimiento = birthDate,
+                        // otros campos como peso, color, etc., irían aquí si los tuvieras
+                    )
+
+                    // Una vez que se agrega, volvemos a la pantalla anterior
+                    onPetAdded()
+                },
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                // El botón solo se activa si los campos obligatorios están llenos
+                enabled = petName.isNotBlank() && species.isNotBlank() && breed.isNotBlank()
+            ) {
+                Text("Agregar Mascota", style = MaterialTheme.typography.titleMedium)
             }
-        )
+
+            Text("* Campos obligatorios", style = MaterialTheme.typography.labelSmall)
+        }
     }
 }

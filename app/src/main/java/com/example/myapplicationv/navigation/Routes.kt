@@ -1,7 +1,7 @@
 package com.example.myapplicationv.navigation
 
-// En navigation/Route.kt
 sealed class Route(val path: String) {
+    // Rutas simples sin argumentos
     object Home : Route("home")
     object Login : Route("login")
     object Register : Route("register")

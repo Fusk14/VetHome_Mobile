@@ -1,31 +1,17 @@
 package com.example.myapplicationv.navigation
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.rememberDrawerState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextAlign
+
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
 import kotlinx.coroutines.launch
-import androidx.compose.material3.DrawerValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplicationv.data.local.database.AppDatabase
@@ -33,8 +19,6 @@ import com.example.myapplicationv.data.repository.VetRepository
 import com.example.myapplicationv.viewmodel.AuthViewModel
 import com.example.myapplicationv.viewmodel.AuthViewModelFactory
 import com.example.myapplicationv.data.local.storage.UserPreferences
-
-import androidx.compose.material3.ExperimentalMaterial3Api
 
 import com.example.myapplicationv.ui.components.AppTopBar
 import com.example.myapplicationv.ui.components.AppDrawer
@@ -47,6 +31,7 @@ import com.example.myapplicationv.screen.PetListScreen
 import com.example.myapplicationv.screen.AddPetScreen
 import com.example.myapplicationv.screen.AppointmentsScreen
 import com.example.myapplicationv.screen.AddAppointmentScreen
+import com.example.myapplicationv.screen.PetDetailScreen
 
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,7 +45,8 @@ fun AppNavGraph(navController: NavHostController) {
     val vetRepository = remember {
         VetRepository(
             clientDao = database.clientDao(),
-            petDao = database.petDao()
+            petDao = database.petDao(),
+            appointmentDao = database.appointmentDao()
         )
     }
     val userPreferences = remember { UserPreferences.getInstance(context) }
@@ -110,7 +96,6 @@ fun AppNavGraph(navController: NavHostController) {
         drawerContent = {
             // Obtener estados aquí para el drawer
             val isLoggedIn by authViewModel.isUserLoggedIn.collectAsStateWithLifecycle()
-            val currentUser by authViewModel.currentUser.collectAsStateWithLifecycle()
 
             AppDrawer(
                 currentRoute = null,
@@ -121,27 +106,15 @@ fun AppNavGraph(navController: NavHostController) {
                     },
                     onMascotas = {
                         scope.launch { drawerState.close() }
-                        if (isLoggedIn) {
-                            goMascotas()
-                        } else {
-                            goLogin()
-                        }
+                        if (isLoggedIn) goMascotas() else goLogin()
                     },
                     onCitas = {
                         scope.launch { drawerState.close() }
-                        if (isLoggedIn) {
-                            goCitas()
-                        } else {
-                            goLogin()
-                        }
+                        if (isLoggedIn) goCitas() else goLogin()
                     },
                     onLogin = {
                         scope.launch { drawerState.close() }
-                        if (!isLoggedIn) {
-                            goLogin()
-                        } else {
-                            goHome()
-                        }
+                        if (!isLoggedIn) goLogin() else goHome()
                     },
                     isUserLoggedIn = isLoggedIn
                 )
@@ -178,9 +151,7 @@ fun AppNavGraph(navController: NavHostController) {
                         onGoCitas = goCitas,
                         onLogout = {
                             authViewModel.logout()
-                            navController.navigate(Route.Home.path) {
-                                popUpTo(Route.Home.path) { inclusive = true }
-                            }
+                            goHome()
                         },
                         isUserLoggedIn = isLoggedIn,
                         userName = currentUser.name,
@@ -202,16 +173,11 @@ fun AppNavGraph(navController: NavHostController) {
                 composable(Route.Register.path) {
                     RegisterScreenVm(
                         vm = authViewModel,
-                        onRegisteredNavigateLogin = {
-                            navController.popBackStack()
-                        },
-                        onGoLogin = {
-                            navController.popBackStack()
-                        }
+                        onRegisteredNavigateLogin = goBack,
+                        onGoLogin = goBack
                     )
                 }
 
-                // PANTALLAS REALES DE MASCOTAS
                 composable(Route.Mascotas.path) {
                     if (isLoggedIn) {
                         PetListScreen(
@@ -219,107 +185,54 @@ fun AppNavGraph(navController: NavHostController) {
                             onBack = goBack,
                             onAddPet = goAddMascota,
                             onPetDetail = { petId ->
+                                // Esta llamada ahora irá a la ruta correcta
                                 navController.navigate(Route.PetDetail.createRoute(petId))
                             }
                         )
                     } else {
-                        LaunchedEffect(key1 = true) {
-                            navController.navigate(Route.Login.path) {
-                                popUpTo(Route.Mascotas.path) { inclusive = true }
-                            }
-                        }
+                        LaunchedEffect(key1 = Unit) { goLogin() }
                     }
                 }
 
                 composable(Route.AddMascota.path) {
                     if (isLoggedIn) {
-                        AddPetScreen(
-                            vm = authViewModel,
-                            onBack = goBack,
-                            onPetAdded = {
-                                navController.popBackStack()
-                            }
-                        )
+                        AddPetScreen(vm = authViewModel, onBack = goBack, onPetAdded = goBack)
                     } else {
-                        LaunchedEffect(key1 = true) {
-                            navController.navigate(Route.Login.path) {
-                                popUpTo(Route.AddMascota.path) { inclusive = true }
-                            }
-                        }
+                        LaunchedEffect(key1 = Unit) { goLogin() }
                     }
                 }
 
-                // PANTALLAS REALES DE CITAS
                 composable(Route.Citas.path) {
                     if (isLoggedIn) {
-                        AppointmentsScreen(
-                            onBack = goBack,
-                            onAddAppointment = goAddCita
-                        )
+                        AppointmentsScreen(vm = authViewModel, onBack = goBack, onAddAppointment = goAddCita)
                     } else {
-                        LaunchedEffect(key1 = true) {
-                            navController.navigate(Route.Login.path) {
-                                popUpTo(Route.Citas.path) { inclusive = true }
-                            }
-                        }
+                        LaunchedEffect(key1 = Unit) { goLogin() }
                     }
                 }
 
                 composable(Route.AddCita.path) {
                     if (isLoggedIn) {
-                        AddAppointmentScreen(
-                            vm = authViewModel,
-                            onBack = goBack,
-                            onAppointmentAdded = {
-                                navController.popBackStack()
-                            }
-                        )
+                        AddAppointmentScreen(vm = authViewModel, onBack = goBack, onAppointmentAdded = goBack)
                     } else {
-                        LaunchedEffect(key1 = true) {
-                            navController.navigate(Route.Login.path) {
-                                popUpTo(Route.AddCita.path) { inclusive = true }
-                            }
-                        }
+                        LaunchedEffect(key1 = Unit) { goLogin() }
                     }
                 }
 
-                // Pantalla de detalle de mascota (placeholder por ahora)
-                composable(Route.PetDetail.path) {
+                composable(
+                    route = Route.PetDetail.path, // Usando la definición de Route
+                    arguments = listOf(navArgument("petId") { type = NavType.LongType })
+                ) { backStackEntry ->
                     if (isLoggedIn) {
-                        // El CenterAlignedTopAppBar está AQUÍ
-                        Scaffold(
-                            topBar = {
-                                CenterAlignedTopAppBar(
-                                    title = { Text("Detalle de Mascota") },
-                                    navigationIcon = {
-                                        IconButton(onClick = goBack) {
-                                            Icon(
-                                                imageVector = Icons.Filled.ArrowBack,
-                                                contentDescription = "Volver"
-                                            )
-                                        }
-                                    }
-                                )
-                            }
-                        ) { innerPadding ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(innerPadding),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "Pantalla de detalle de mascota\n(En desarrollo)",
-                                    textAlign = TextAlign.Center
-                                )
-                            }
+                        val petId = backStackEntry.arguments?.getLong("petId")
+                        if (petId != null) {
+                            PetDetailScreen(
+                                vm = authViewModel,
+                                petId = petId,
+                                onBack = goBack
+                            )
                         }
                     } else {
-                        LaunchedEffect(key1 = true) {
-                            navController.navigate(Route.Login.path) {
-                                popUpTo(Route.PetDetail.path) { inclusive = true }
-                            }
-                        }
+                        LaunchedEffect(key1 = Unit) { goLogin() }
                     }
                 }
             }

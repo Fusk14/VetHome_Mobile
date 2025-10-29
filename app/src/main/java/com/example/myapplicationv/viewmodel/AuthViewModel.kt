@@ -2,6 +2,7 @@ package com.example.myapplicationv.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.myapplicationv.data.local.appointment.AppointmentEntity
 import com.example.myapplicationv.data.local.pet.PetEntity
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,7 +12,9 @@ import kotlinx.coroutines.launch
 import com.example.myapplicationv.domain.validation.*
 import com.example.myapplicationv.data.repository.VetRepository
 import com.example.myapplicationv.data.local.storage.UserPreferences
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import java.util.Date
 
 // ----------------- ESTADOS DE UI (observable con StateFlow) -----------------
 
@@ -64,6 +67,12 @@ data class PetsUiState(
     val selectedPet: PetEntity? = null
 )
 
+data class AppointmentsUiState(
+    val appointments: List<AppointmentEntity> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null
+)
+
 // 🆕 NUEVO: Estado para manejar mensajes de sesión
 data class SessionState(
     val isLoggedIn: Boolean = false,
@@ -98,6 +107,9 @@ class AuthViewModel(
     private val _pets = MutableStateFlow(PetsUiState())
     val pets: StateFlow<PetsUiState> = _pets
 
+    private val _appointments = MutableStateFlow(AppointmentsUiState())
+    val appointments: StateFlow<AppointmentsUiState> = _appointments
+
     // Bloque INIT para verificar sesión al inicio del ViewModel
     init {
         checkUserSession()
@@ -123,7 +135,10 @@ class AuthViewModel(
 
                 _currentUser.value = clientState
                 _login.update { it.copy(currentClient = clientState) }
-                id.toLongOrNull()?.let { loadPetsForClient(it) }
+                id.toLongOrNull()?.let {
+                    loadPetsForClient(it)
+                    loadAppointmentsForClient(it)
+                }
             }
         }
     }
@@ -185,7 +200,10 @@ class AuthViewModel(
                         )
                     }
 
-                    client?.id?.let { loadPetsForClient(it) }
+                    client?.id?.let {
+                        loadPetsForClient(it)
+                        loadAppointmentsForClient(it)
+                    }
 
                     it.copy(
                         isSubmitting = false,
@@ -417,7 +435,73 @@ class AuthViewModel(
         }
     }
 
-    // 🔄 MODIFICADO: logout con mensaje de sesión
+    // OPERACIONES PARA CITAS
+    fun loadAppointmentsForClient(clientId: Long) {
+        viewModelScope.launch {
+            _appointments.update { it.copy(isLoading = true, error = null) }
+            try {
+                val appointmentsList = repository.getAppointmentsByOwner(clientId)
+                _appointments.update { it.copy(appointments = appointmentsList, isLoading = false) }
+            } catch (e: Exception) {
+                _appointments.update { it.copy(error = "Error al cargar las citas", isLoading = false) }
+            }
+        }
+    }
+
+    // Dentro de AuthViewModel.kt
+
+    // ... (otros StateFlow)
+    private val _selectedPet = MutableStateFlow<PetEntity?>(null)
+    val selectedPet: StateFlow<PetEntity?> = _selectedPet.asStateFlow()
+
+    // Nueva función para cargar una mascota por su ID
+    fun loadPetById(petId: Long) {
+        viewModelScope.launch {
+            // Asumimos que tienes una función en tu repositorio para esto
+            // ✅ CORRECCIÓN: Se usa la instancia 'repository' en lugar de la clase 'VetRepository'
+            _selectedPet.value = repository.getPetById(petId)
+        }
+    }
+
+
+    fun addAppointment(
+        petId: Long,
+        date: Date,
+        reason: String
+    ) {
+        val clientId = _login.value.currentClient?.clientId ?: return
+
+        // Validación de la fecha
+        if (date.before(Date())) {
+            _appointments.update { it.copy(error = "No se pueden crear citas en fechas pasadas.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _appointments.update { it.copy(isLoading = true, error = null) }
+            try {
+                val result = repository.addAppointment(
+                    ownerId = clientId,
+                    petId = petId,
+                    date = date,
+                    reason = reason
+                )
+
+                if (result.isSuccess) {
+                    loadAppointmentsForClient(clientId)
+                } else {
+                    _appointments.update { it.copy(
+                        error = result.exceptionOrNull()?.message ?: "Error al agregar la cita",
+                        isLoading = false
+                    )}
+                }
+            } catch (e: Exception) {
+                _appointments.update { it.copy(error = "Error al agregar la cita", isLoading = false) }
+            }
+        }
+    }
+
+    //  logout con mensaje de sesión
     fun logout() {
         viewModelScope.launch {
             userPreferences.clearUserData()
@@ -435,8 +519,10 @@ class AuthViewModel(
             _isUserLoggedIn.value = false
             _currentUser.value = ClientUiState()
             _pets.update { PetsUiState() }
+            _appointments.update { AppointmentsUiState() }
             _login.update { LoginUiState() }
             _register.update { RegisterUiState() }
         }
     }
+
 }

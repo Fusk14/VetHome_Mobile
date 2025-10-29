@@ -1,6 +1,5 @@
 package com.example.myapplicationv.screen
 
-
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,35 +10,28 @@ import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-
-// Data class para citas
-data class Appointment(
-    val id: Long,
-    val petName: String,
-    val date: String,
-    val time: String,
-    val service: String,
-    val status: String // "pending", "confirmed", "completed", "cancelled"
-)
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.myapplicationv.data.local.appointment.AppointmentEntity
+import com.example.myapplicationv.data.local.pet.PetEntity
+import com.example.myapplicationv.viewmodel.AuthViewModel
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppointmentsScreen(
+    vm: AuthViewModel,
     onBack: () -> Unit,
     onAddAppointment: () -> Unit
 ) {
-    // Datos de ejemplo - en una app real estos vendrían de tu base de datos
-    val appointments = listOf(
-        Appointment(1, "Firulais", "2024-01-15", "10:00", "Consulta general", "confirmed"),
-        Appointment(2, "Michi", "2024-01-20", "11:30", "Vacunación", "pending"),
-        Appointment(3, "Toby", "2024-01-25", "09:00", "Control de peso", "completed"),
-        Appointment(4, "Firulais", "2024-02-01", "14:00", "Limpieza dental", "pending")
-    )
+    val appointmentsState by vm.appointments.collectAsStateWithLifecycle()
+    val petsState by vm.pets.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -72,13 +64,25 @@ fun AppointmentsScreen(
             }
         }
     ) { innerPadding ->
-        if (appointments.isEmpty()) {
-            EmptyAppointmentsState(onAddAppointment = onAddAppointment, modifier = Modifier.padding(innerPadding))
-        } else {
-            AppointmentsList(
-                appointments = appointments,
-                modifier = Modifier.padding(innerPadding)
-            )
+        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+            if (appointmentsState.isLoading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            } else if (appointmentsState.error != null) {
+                Text(
+                    text = "Error: ${appointmentsState.error}",
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.align(Alignment.Center).padding(16.dp)
+                )
+            } else if (appointmentsState.appointments.isEmpty()) {
+                EmptyAppointmentsState(onAddAppointment = onAddAppointment, modifier = Modifier.fillMaxSize())
+            } else {
+                AppointmentsList(
+                    appointments = appointmentsState.appointments,
+                    pets = petsState.pets,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
     }
 }
@@ -86,7 +90,7 @@ fun AppointmentsScreen(
 @Composable
 private fun EmptyAppointmentsState(onAddAppointment: () -> Unit, modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -129,37 +133,28 @@ private fun EmptyAppointmentsState(onAddAppointment: () -> Unit, modifier: Modif
 
 @Composable
 private fun AppointmentsList(
-    appointments: List<Appointment>,
+    appointments: List<AppointmentEntity>,
+    pets: List<PetEntity>,
     modifier: Modifier = Modifier
 ) {
+    val petMap = pets.associateBy { it.id }
+
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier,
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(appointments, key = { it.id }) { appointment ->
-            AppointmentCard(appointment = appointment)
+            val pet = petMap[appointment.petId]
+            AppointmentCard(appointment = appointment, petName = pet?.nombre ?: "Mascota no encontrada")
         }
     }
 }
 
 @Composable
-private fun AppointmentCard(appointment: Appointment) {
-    val statusColor = when (appointment.status) {
-        "confirmed" -> MaterialTheme.colorScheme.primary
-        "pending" -> MaterialTheme.colorScheme.secondary
-        "completed" -> MaterialTheme.colorScheme.tertiary
-        "cancelled" -> MaterialTheme.colorScheme.error
-        else -> MaterialTheme.colorScheme.onSurface
-    }
-
-    val statusText = when (appointment.status) {
-        "confirmed" -> "Confirmada"
-        "pending" -> "Pendiente"
-        "completed" -> "Completada"
-        "cancelled" -> "Cancelada"
-        else -> appointment.status
-    }
+private fun AppointmentCard(appointment: AppointmentEntity, petName: String) {
+    val dateFormat = SimpleDateFormat("dd 'de' MMMM 'de' yyyy", Locale.getDefault())
+    val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -174,32 +169,30 @@ private fun AppointmentCard(appointment: Appointment) {
             Icon(
                 Icons.Filled.EventAvailable,
                 contentDescription = "Cita",
-                tint = statusColor,
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(40.dp)
             )
             Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = appointment.petName,
+                    text = petName,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "${appointment.date} a las ${appointment.time}",
+                    text = "Fecha: ${dateFormat.format(appointment.date)}",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Text(
-                    text = appointment.service,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    text = "Hora: ${timeFormat.format(appointment.date)}",
+                    style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = statusText,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = statusColor,
-                    fontWeight = FontWeight.Medium
+                    text = "Motivo: ${appointment.reason}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
             }
         }

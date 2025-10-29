@@ -7,6 +7,7 @@ import androidx.room.Query
 
 @Dao
 interface PetDao {
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(pet: PetEntity): Long
 

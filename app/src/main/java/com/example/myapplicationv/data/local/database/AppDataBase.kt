@@ -4,7 +4,11 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.myapplicationv.data.local.appointment.AppointmentDao
+import com.example.myapplicationv.data.local.appointment.AppointmentEntity
+import com.example.myapplicationv.data.local.appointment.Converters
 import com.example.myapplicationv.data.local.user.ClientDao
 import com.example.myapplicationv.data.local.user.ClientEntity
 import com.example.myapplicationv.data.local.pet.PetDao
@@ -21,15 +25,17 @@ import kotlinx.coroutines.launch
  * - exportSchema: True para debugging (puedes ver el esquema SQL generado)
  */
 @Database(
-    entities = [ClientEntity::class, PetEntity::class],  // se agrega client y pet entity
-    version = 1,
+    entities = [ClientEntity::class, PetEntity::class, AppointmentEntity::class],  // se agrega client, pet y appointment entity
+    version = 2, // Incrementar la versión de la base de datos
     exportSchema = true // Mantener true para ver el esquema SQL
 )
+@TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     // nuevos daos
-    abstract fun clientDao(): ClientDao  // ← Cambiamos userDao por clientDao
-    abstract fun petDao(): PetDao        // ← NUEVO DAO para mascotas
+    abstract fun clientDao(): ClientDao
+    abstract fun petDao(): PetDao
+    abstract fun appointmentDao(): AppointmentDao
 
     companion object {
         @Volatile

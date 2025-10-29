@@ -1,5 +1,7 @@
 package com.example.myapplicationv.screen
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -10,10 +12,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.myapplicationv.data.local.pet.PetEntity
 import com.example.myapplicationv.viewmodel.AuthViewModel
+import java.util.Calendar
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -22,45 +28,25 @@ fun AddAppointmentScreen(
     onBack: () -> Unit,
     onAppointmentAdded: () -> Unit
 ) {
+    val context = LocalContext.current
+
     // Estados para el formulario
-    var selectedPet by remember { mutableStateOf("") }
-    var selectedDate by remember { mutableStateOf("") }
-    var selectedTime by remember { mutableStateOf("") }
-    var selectedService by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
+    var selectedPet by remember { mutableStateOf<PetEntity?>(null) }
+    var selectedDate by remember { mutableStateOf<Date?>(null) }
+    var reason by remember { mutableStateOf("") }
 
-    var showSuccessDialog by remember { mutableStateOf(false) }
-    var showErrorDialog by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf("") }
+    var isPetDropdownExpanded by remember { mutableStateOf(false) }
 
-    // Obtener mascotas del usuario
+    val appointmentsState by vm.appointments.collectAsStateWithLifecycle()
     val petsState by vm.pets.collectAsStateWithLifecycle()
     val currentUserState by vm.currentUser.collectAsStateWithLifecycle()
-    val currentUser = currentUserState
 
-    // Cargar mascotas si no están cargadas
-    LaunchedEffect(currentUser.clientId) {
-        currentUser.clientId
-            .takeIf { id: Long -> id > 0 }
-            ?.let { clientId ->
-                vm.loadPetsForClient(clientId)
-            }
+    // Cargar mascotas si es necesario
+    LaunchedEffect(currentUserState.clientId) {
+        if (currentUserState.clientId > 0) {
+            vm.loadPetsForClient(currentUserState.clientId)
+        }
     }
-
-    // Datos de servicios
-    val services = listOf(
-        "Consulta general",
-        "Vacunación",
-        "Control de peso",
-        "Desparasitación",
-        "Limpieza dental",
-        "Cirugía",
-        "Urgencia",
-        "Peluquería"
-    )
-
-    // Obtener nombres de mascotas para el selector
-    val petNames = petsState.pets.map { it.nombre }
 
     Scaffold(
         topBar = {
@@ -121,148 +107,88 @@ fun AddAppointmentScreen(
                 }
             }
 
-            // Formulario
-            Card(
-                modifier = Modifier.fillMaxWidth()
+            // Selector de mascota
+            ExposedDropdownMenuBox(
+                expanded = isPetDropdownExpanded,
+                onExpandedChange = { isPetDropdownExpanded = !isPetDropdownExpanded }
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                OutlinedTextField(
+                    value = selectedPet?.nombre ?: "",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Mascota *") },
+                    modifier = Modifier.fillMaxWidth().menuAnchor(),
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isPetDropdownExpanded) },
+                    placeholder = { Text(if (petsState.pets.isEmpty()) "No tienes mascotas" else "Selecciona una mascota") },
+                    enabled = petsState.pets.isNotEmpty()
+                )
+                ExposedDropdownMenu(
+                    expanded = isPetDropdownExpanded,
+                    onDismissRequest = { isPetDropdownExpanded = false }
                 ) {
-                    // Selector de mascota
-                    OutlinedTextField(
-                        value = selectedPet,
-                        onValueChange = { selectedPet = it },
-                        label = { Text("Mascota *") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        placeholder = {
-                            Text(
-                                if (petNames.isEmpty()) "No tienes mascotas registradas"
-                                else "Selecciona una mascota"
-                            )
-                        },
-                        enabled = petNames.isNotEmpty()
-                    )
-
-                    // Información sobre mascotas
-                    if (petNames.isEmpty()) {
-                        Text(
-                            text = "💡 Primero debes registrar una mascota para agendar una cita",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.secondary
+                    petsState.pets.forEach {
+                        DropdownMenuItem(
+                            text = { Text(it.nombre) },
+                            onClick = {
+                                selectedPet = it
+                                isPetDropdownExpanded = false
+                            }
                         )
                     }
-
-                    // Fecha
-                    OutlinedTextField(
-                        value = selectedDate,
-                        onValueChange = { selectedDate = it },
-                        label = { Text("Fecha *") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        placeholder = { Text("YYYY-MM-DD") }
-                    )
-
-                    // Hora
-                    OutlinedTextField(
-                        value = selectedTime,
-                        onValueChange = { selectedTime = it },
-                        label = { Text("Hora *") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        placeholder = { Text("HH:MM") }
-                    )
-
-                    // Servicio
-                    OutlinedTextField(
-                        value = selectedService,
-                        onValueChange = { selectedService = it },
-                        label = { Text("Servicio *") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        placeholder = { Text("Selecciona un servicio") }
-                    )
-
-                    // Notas
-                    OutlinedTextField(
-                        value = notes,
-                        onValueChange = { notes = it },
-                        label = { Text("Notas adicionales") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(80.dp),
-                        maxLines = 3,
-                        placeholder = { Text("Síntomas, observaciones, etc.") }
-                    )
                 }
             }
 
-            // Información de campos obligatorios
-            Text(
-                text = "* Campos obligatorios",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            // Selector de fecha y hora
+            Button(onClick = { showDateTimePicker(context) { selectedDate = it } }) {
+                Text(text = selectedDate?.toString() ?: "Seleccionar fecha y hora")
+            }
+
+            // Motivo de la cita
+            OutlinedTextField(
+                value = reason,
+                onValueChange = { reason = it },
+                label = { Text("Motivo de la cita") },
+                modifier = Modifier.fillMaxWidth(),
+                maxLines = 3
             )
 
-            // Botón Agendar
+            // Botón para agendar
             Button(
                 onClick = {
-                    if (selectedPet.isNotBlank() && selectedDate.isNotBlank() &&
-                        selectedTime.isNotBlank() && selectedService.isNotBlank()) {
-                        // Aquí integrarías con tu ViewModel para guardar la cita
-                        // Por ahora mostramos éxito
-                        showSuccessDialog = true
+                    val pet = selectedPet
+                    val date = selectedDate
+                    if (pet != null && date != null && reason.isNotBlank()) {
+                        vm.addAppointment(pet.id, date, reason)
+                        onAppointmentAdded()
                     } else {
-                        errorMessage = "Por favor completa todos los campos obligatorios"
-                        showErrorDialog = true
+                        // Manejar el caso de campos incompletos
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = selectedPet.isNotBlank() && selectedDate.isNotBlank() &&
-                        selectedTime.isNotBlank() && selectedService.isNotBlank() &&
-                        petNames.isNotEmpty(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
+                enabled = selectedPet != null && selectedDate != null && reason.isNotBlank()
             ) {
-                Text("Agendar Cita", style = MaterialTheme.typography.titleMedium)
+                if (appointmentsState.isLoading) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary)
+                } else {
+                    Text("Agendar Cita")
+                }
+            }
+
+            appointmentsState.error?.let {
+                Text(text = it, color = MaterialTheme.colorScheme.error)
             }
         }
     }
+}
 
-    // Diálogo de éxito
-    if (showSuccessDialog) {
-        AlertDialog(
-            onDismissRequest = { showSuccessDialog = false },
-            title = { Text("¡Cita Agendada!") },
-            text = { Text("La cita se ha programado correctamente para $selectedDate a las $selectedTime.") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showSuccessDialog = false
-                        onAppointmentAdded()
-                    }
-                ) {
-                    Text("Aceptar")
-                }
-            }
-        )
-    }
-
-    // Diálogo de error
-    if (showErrorDialog) {
-        AlertDialog(
-            onDismissRequest = { showErrorDialog = false },
-            title = { Text("Error") },
-            text = { Text(errorMessage) },
-            confirmButton = {
-                Button(
-                    onClick = { showErrorDialog = false }
-                ) {
-                    Text("Aceptar")
-                }
-            }
-        )
-    }
+private fun showDateTimePicker(context: android.content.Context, onDateTimeSelected: (Date) -> Unit) {
+    val calendar = Calendar.getInstance()
+    DatePickerDialog(context, {
+        _, year, month, dayOfMonth ->
+        TimePickerDialog(context, {
+            _, hourOfDay, minute ->
+            calendar.set(year, month, dayOfMonth, hourOfDay, minute)
+            onDateTimeSelected(calendar.time)
+        }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), true).show()
+    }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show()
 }
