@@ -5,11 +5,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,28 +28,13 @@ fun PetListScreen(
     onPetDetail: (Long) -> Unit
 ) {
     val petsState by vm.pets.collectAsStateWithLifecycle()
-    val currentUserState by vm.currentUser.collectAsStateWithLifecycle()
-    val currentUser = currentUserState
-
-    // 🆕 MEJORADO: Cargar mascotas cuando se abre la pantalla o cuando cambia el usuario
-    LaunchedEffect(currentUser.clientId) {
-        if (currentUser.clientId > 0L) {
-            vm.loadPetsForClient(currentUser.clientId)
-        }
-    }
-
-    // 🆕 NUEVO: También cargar cuando volvemos a esta pantalla después de agregar
-    LaunchedEffect(Unit) {
-        if (currentUser.clientId > 0L) {
-            vm.loadPetsForClient(currentUser.clientId)
-        }
-    }
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
                     Text(
+                        // Muestra el número de mascotas obtenidas del estado.
                         text = "Mis Mascotas (${petsState.pets.size})",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
@@ -60,14 +44,10 @@ fun PetListScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Volver")
                     }
-                },
-                actions = {
-                    IconButton(onClick = onAddPet) {
-                        Icon(Icons.Filled.Add, contentDescription = "Agregar mascota")
-                    }
                 }
             )
         },
+        // El FloatingActionButton es una forma más estándar en Material Design para añadir items.
         floatingActionButton = {
             FloatingActionButton(
                 onClick = onAddPet,
@@ -77,119 +57,75 @@ fun PetListScreen(
             }
         }
     ) { innerPadding ->
-        if (petsState.isLoading && petsState.pets.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        } else if (petsState.error != null && petsState.pets.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "Error al cargar mascotas",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                    Text(
-                        text = petsState.error ?: "Error desconocido",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Button(
-                        onClick = {
-                            currentUser.clientId.takeIf { it > 0 }?.let {
-                                vm.loadPetsForClient(it)
-                            }
-                        }
+        // El Box gestiona qué mostrar: la carga, el error, la lista vacía o la lista con mascotas.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+            contentAlignment = Alignment.Center
+        ) {
+            when {
+                // 1. Estado de carga inicial.
+                petsState.isLoading -> {
+                    CircularProgressIndicator()
+                }
+                // 2. Estado de error.
+                petsState.error != null -> {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = petsState.error!!,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+                // 3. Estado de éxito pero la lista está vacía.
+                petsState.pets.isEmpty() -> {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(16.dp)
                     ) {
-                        Text("Reintentar")
+                        Icon(
+                            Icons.Filled.Pets,
+                            contentDescription = "Sin mascotas",
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text = "No tienes mascotas registradas",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "Agrega tu primera mascota para comenzar",
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+                // 4. Estado de éxito con mascotas en la lista.
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(petsState.pets, key = { it.id }) { pet ->
+                            PetCard(pet = pet, onClick = { onPetDetail(pet.id) })
+                        }
                     }
                 }
             }
-        } else if (petsState.pets.isEmpty()) {
-            EmptyPetsState(onAddPet = onAddPet, modifier = Modifier.padding(innerPadding))
-        } else {
-            PetsList(
-                pets = petsState.pets,
-                onPetClick = onPetDetail,
-                modifier = Modifier.padding(innerPadding)
-            )
         }
     }
 }
 
-@Composable
-private fun EmptyPetsState(onAddPet: () -> Unit, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Icon(
-                Icons.Filled.Pets,
-                contentDescription = "Sin mascotas",
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                modifier = Modifier.size(64.dp)
-            )
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = "No tienes mascotas registradas",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "Agrega tu primera mascota para comenzar",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(24.dp))
-            Button(
-                onClick = onAddPet,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Agregar Mascota")
-            }
-        }
-    }
-}
-
-@Composable
-private fun PetsList(
-    pets: List<PetEntity>,
-    onPetClick: (Long) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        items(pets, key = { it.id }) { pet ->
-            PetCard(pet = pet, onClick = { onPetClick(pet.id) })
-        }
-    }
-}
-
+/**
+ * Un Composable privado para mostrar la información de una mascota en una tarjeta.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PetCard(pet: PetEntity, onClick: () -> Unit) {
     Card(
@@ -221,16 +157,17 @@ private fun PetCard(pet: PetEntity, onClick: () -> Unit) {
                     text = "${pet.especie} - ${pet.raza}",
                     style = MaterialTheme.typography.bodyMedium
                 )
-                if (pet.peso != null) {
+                // Muestra peso y color solo si no son nulos
+                pet.peso?.let {
                     Text(
-                        text = "Peso: ${pet.peso} kg",
+                        text = "Peso: $it kg",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                 }
-                if (pet.color != null) {
+                pet.color?.let {
                     Text(
-                        text = "Color: ${pet.color}",
+                        text = "Color: $it",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )

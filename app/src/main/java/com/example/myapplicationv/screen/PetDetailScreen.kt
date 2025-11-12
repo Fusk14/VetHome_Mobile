@@ -5,7 +5,6 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -25,8 +24,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -36,7 +35,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
-// --- Funciones auxiliares para manejo de archivos (movidas aquí) ---
+// --- Funciones auxiliares para manejo de archivos (se mantienen igual) ---
 private fun createTempImageFile(context: Context): File {
     val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
     val storageDir = context.cacheDir
@@ -48,7 +47,6 @@ private fun getImageUriForFile(context: Context, file: File): Uri {
     return FileProvider.getUriForFile(context, authority, file)
 }
 
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PetDetailScreen(
@@ -57,10 +55,11 @@ fun PetDetailScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val pet by vm.selectedPet.collectAsState()
+    // ✅ CAMBIO 1: La variable ahora se llama 'petState' para mayor claridad.
+    // Su tipo es 'SelectedPetUiState'.
+    val petState by vm.selectedPet.collectAsState()
 
-    // --- Lógica de Cámara y Galería (movida aquí) ---
-    // NOTA: En una app real, la URI de la foto debería guardarse en la entidad `PetEntity`
+    // --- Lógica de Cámara y Galería ---
     var photoUriString by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingCaptureUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -70,7 +69,6 @@ fun PetDetailScreen(
         if (success) {
             photoUriString = pendingCaptureUri?.toString()
             Toast.makeText(context, "Foto guardada", Toast.LENGTH_SHORT).show()
-            // TODO: Aquí llamarías a vm.updatePetPhoto(petId, photoUriString) para guardarlo en la DB
         }
     }
 
@@ -80,20 +78,18 @@ fun PetDetailScreen(
         uri?.let {
             photoUriString = it.toString()
             Toast.makeText(context, "Foto seleccionada", Toast.LENGTH_SHORT).show()
-            // TODO: Aquí llamarías a vm.updatePetPhoto(petId, photoUriString)
         }
     }
 
     LaunchedEffect(petId) {
         vm.loadPetById(petId)
-        // TODO: Cuando cargues la mascota, deberías cargar su foto si ya existe
-        // photoUriString = pet.value?.photoUrl
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(pet?.nombre ?: "Detalle de Mascota") },
+                // ✅ CAMBIO 2: Accedemos al nombre a través de 'petState.pet?.nombre'
+                title = { Text(petState.pet?.nombre ?: "Detalle de Mascota") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
@@ -102,99 +98,115 @@ fun PetDetailScreen(
             )
         }
     ) { padding ->
-        Column(
+        // ✅ CAMBIO 3: Manejamos los tres posibles estados: carga, error y éxito.
+        Box(
             modifier = Modifier
                 .padding(padding)
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
-            if (pet != null) {
-                // --- Contenedor de la imagen ---
-                Box(
-                    modifier = Modifier.size(150.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (photoUriString != null) {
-                        // Muestra la imagen cargada
-                        AsyncImage(
-                            model = ImageRequest.Builder(context)
-                                .data(Uri.parse(photoUriString))
-                                .crossfade(true)
-                                .build(),
-                            contentDescription = "Foto de ${pet!!.nombre}",
-                            modifier = Modifier.fillMaxSize().clip(CircleShape),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        // Muestra un placeholder si no hay imagen
+            when {
+                // Estado de Carga
+                petState.isLoading -> {
+                    CircularProgressIndicator()
+                    Text(
+                        "Cargando datos de la mascota...",
+                        modifier = Modifier.padding(top = 80.dp)
+                    )
+                }
+                // Estado de Error
+                petState.error != null -> {
+                    Text(
+                        text = petState.error!!,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+                // Estado de Éxito (la mascota no es nula)
+                petState.pet != null -> {
+                    val pet = petState.pet!! // Creamos una variable local para no repetir 'petState.pet'
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // --- Contenedor de la imagen ---
                         Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            modifier = Modifier.size(150.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_pets),
-                                contentDescription = "Icono de mascota",
-                                modifier = Modifier.size(80.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            if (photoUriString != null) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(context)
+                                        .data(Uri.parse(photoUriString))
+                                        .crossfade(true)
+                                        .build(),
+                                    contentDescription = "Foto de ${pet.nombre}",
+                                    modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        painter = painterResource(id = R.drawable.ic_pets),
+                                        contentDescription = "Icono de mascota",
+                                        modifier = Modifier.size(80.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = pet.nombre,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        // --- Botones para gestión de la foto ---
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Button(onClick = {
+                                val file = createTempImageFile(context)
+                                val uri = getImageUriForFile(context, file)
+                                pendingCaptureUri = uri
+                                takePictureLauncher.launch(uri)
+                            }) {
+                                Icon(Icons.Default.CameraAlt, contentDescription = "Tomar Foto")
+                                Spacer(Modifier.width(8.dp))
+                                Text("Tomar Foto")
+                            }
+                            OutlinedButton(onClick = { pickImageLauncher.launch("image/*") }) {
+                                Icon(Icons.Default.PhotoLibrary, contentDescription = "Elegir de Galería")
+                                Spacer(Modifier.width(8.dp))
+                                Text("Galería")
+                            }
+                        }
+
+                        // --- Tarjeta con información detallada ---
+                        // ✅ CAMBIO 4: Usamos la variable local 'pet' para acceder a las propiedades
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                InfoRow("Especie:", pet.especie)
+                                InfoRow("Raza:", pet.raza)
+                                InfoRow("Fecha de Nacimiento:", pet.fechaNacimiento ?: "No especificada")
+                                InfoRow("Peso:", "${pet.peso ?: "N/A"} kg")
+                            }
                         }
                     }
                 }
-
-
-                Text(
-                    text = pet!!.nombre,
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-
-                // --- Botones para gestión de la foto (ahora funcionales) ---
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Botón para tomar foto
-                    Button(onClick = {
-                        val file = createTempImageFile(context)
-                        val uri = getImageUriForFile(context, file)
-                        pendingCaptureUri = uri
-                        takePictureLauncher.launch(uri)
-                    }) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = "Tomar Foto")
-                        Spacer(Modifier.width(8.dp))
-                        Text("Tomar Foto")
-                    }
-                    // Botón para elegir de galería
-                    OutlinedButton(onClick = {
-                        pickImageLauncher.launch("image/*")
-                    }) {
-                        Icon(Icons.Default.PhotoLibrary, contentDescription = "Elegir de Galería")
-                        Spacer(Modifier.width(8.dp))
-                        Text("Galería")
-                    }
-                }
-
-                // --- Tarjeta con información detallada ---
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        InfoRow("Especie:", pet!!.especie)
-                        InfoRow("Raza:", pet!!.raza)
-                        InfoRow("Fecha de Nacimiento:", pet!!.fechaNacimiento ?: "No especificada")
-                        InfoRow("Peso:", "${pet!!.peso ?: "N/A"} kg")
-                    }
-                }
-
-            } else {
-                // Muestra un indicador de carga mientras se buscan los datos
-                CircularProgressIndicator()
-                Text("Cargando datos de la mascota...")
             }
         }
     }

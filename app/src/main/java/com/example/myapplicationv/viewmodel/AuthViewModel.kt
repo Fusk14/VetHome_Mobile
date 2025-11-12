@@ -4,20 +4,28 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplicationv.data.local.appointment.AppointmentEntity
 import com.example.myapplicationv.data.local.pet.PetEntity
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import com.example.myapplicationv.domain.validation.*
-import com.example.myapplicationv.data.repository.VetRepository
 import com.example.myapplicationv.data.local.storage.UserPreferences
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
+import com.example.myapplicationv.data.repository.VetRepository
+import com.example.myapplicationv.domain.validation.*
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import java.util.Date
 
-// ----------------- ESTADOS DE UI (observable con StateFlow) -----------------
+// --- ESTADOS DE PERFIL (NUEVOS) ---
+data class ProfileUiState(
+    val name: String = "",
+    val email: String = "",
+    val phone: String = "",
+    val address: String = "",
+    val emergencyContact: String = "",
+    val newPassword: String = "",
+    val confirmPassword: String = "",
+    val isLoading: Boolean = false,
+    val successMessage: String? = null,
+    val errorMessage: String? = null
+)
 
+// --- DATA CLASSES DE ESTADO (EXISTENTES) ---
 data class LoginUiState(
     val email: String = "",
     val pass: String = "",
@@ -38,7 +46,6 @@ data class RegisterUiState(
     val emergencyContact: String = "",
     val pass: String = "",
     val confirm: String = "",
-
     val nameError: String? = null,
     val emailError: String? = null,
     val phoneError: String? = null,
@@ -46,7 +53,6 @@ data class RegisterUiState(
     val emergencyContactError: String? = null,
     val passError: String? = null,
     val confirmError: String? = null,
-
     val isSubmitting: Boolean = false,
     val canSubmit: Boolean = false,
     val success: Boolean = false,
@@ -63,8 +69,13 @@ data class ClientUiState(
 data class PetsUiState(
     val pets: List<PetEntity> = emptyList(),
     val isLoading: Boolean = false,
-    val error: String? = null,
-    val selectedPet: PetEntity? = null
+    val error: String? = null
+)
+
+data class SelectedPetUiState(
+    val pet: PetEntity? = null,
+    val isLoading: Boolean = false,
+    val error: String? = null
 )
 
 data class AppointmentsUiState(
@@ -73,7 +84,6 @@ data class AppointmentsUiState(
     val error: String? = null
 )
 
-// 🆕 NUEVO: Estado para manejar mensajes de sesión
 data class SessionState(
     val isLoggedIn: Boolean = false,
     val loginMessage: String? = null,
@@ -81,239 +91,140 @@ data class SessionState(
     val showMessage: Boolean = false
 )
 
+
 class AuthViewModel(
     private val repository: VetRepository,
     private val userPreferences: UserPreferences
 ) : ViewModel() {
 
-    // Estados para sesión
+    // --- ESTADOS EXISTENTES ---
+    private val _sessionState = MutableStateFlow(SessionState())
+    val sessionState: StateFlow<SessionState> = _sessionState.asStateFlow()
+
     private val _isUserLoggedIn = MutableStateFlow(false)
-    val isUserLoggedIn: StateFlow<Boolean> = _isUserLoggedIn
+    val isUserLoggedIn: StateFlow<Boolean> = _isUserLoggedIn.asStateFlow()
 
     private val _currentUser = MutableStateFlow(ClientUiState())
-    val currentUser: StateFlow<ClientUiState> = _currentUser
+    val currentUser: StateFlow<ClientUiState> = _currentUser.asStateFlow()
 
-    // 🆕 NUEVO: Estado para mensajes de sesión
-    private val _sessionState = MutableStateFlow(SessionState())
-    val sessionState: StateFlow<SessionState> = _sessionState
-
-    // Flujos de estado existentes
     private val _login = MutableStateFlow(LoginUiState())
-    val login: StateFlow<LoginUiState> = _login
+    val login: StateFlow<LoginUiState> = _login.asStateFlow()
 
     private val _register = MutableStateFlow(RegisterUiState())
-    val register: StateFlow<RegisterUiState> = _register
+    val register: StateFlow<RegisterUiState> = _register.asStateFlow()
 
     private val _pets = MutableStateFlow(PetsUiState())
-    val pets: StateFlow<PetsUiState> = _pets
+    val pets: StateFlow<PetsUiState> = _pets.asStateFlow()
+
+    private val _selectedPet = MutableStateFlow(SelectedPetUiState())
+    val selectedPet: StateFlow<SelectedPetUiState> = _selectedPet.asStateFlow()
 
     private val _appointments = MutableStateFlow(AppointmentsUiState())
-    val appointments: StateFlow<AppointmentsUiState> = _appointments
+    val appointments: StateFlow<AppointmentsUiState> = _appointments.asStateFlow()
 
-    // Bloque INIT para verificar sesión al inicio del ViewModel
+    // --- ESTADO DE PERFIL (NUEVO) ---
+    private val _profile = MutableStateFlow(ProfileUiState())
+    val profile: StateFlow<ProfileUiState> = _profile.asStateFlow()
+
+
     init {
+        // ✅ MEJORA COMBINADA: Un único launch para las subscripciones
+        viewModelScope.launch {
+            currentUser.collect { user ->
+                if (user.clientId != 0L) {
+                    // Subscripción reactiva al Flow de mascotas
+                    launch {
+                        repository.getPetsByOwner(user.clientId).collect { petsList ->
+                            _pets.update { it.copy(pets = petsList, isLoading = false) }
+                            _currentUser.update { it.copy(petsCount = petsList.size) }
+                        }
+                    }
+                    // Subscripción reactiva al Flow de citas
+                    launch {
+                        repository.getAppointmentsByOwner(user.clientId).collect { appointmentsList ->
+                            _appointments.update { it.copy(appointments = appointmentsList, isLoading = false) }
+                        }
+                    }
+                } else {
+                    // Limpia las listas si el usuario cierra sesión
+                    _pets.update { PetsUiState() }
+                    _appointments.update { AppointmentsUiState() }
+                    _profile.value = ProfileUiState() // Limpiar el estado del perfil
+                }
+            }
+        }
+
         checkUserSession()
     }
 
-    // Verificar si hay sesión activa y restaurar el estado
+    // --- LÓGICA DE SESIÓN (LOGIN/LOGOUT/REGISTER) ---
     private fun checkUserSession() {
         viewModelScope.launch {
             val loggedIn = userPreferences.isLoggedIn.first()
-            _isUserLoggedIn.value = loggedIn
-            _sessionState.update { it.copy(isLoggedIn = loggedIn) }
-
             if (loggedIn) {
                 val email = userPreferences.userEmail.first()
                 val name = userPreferences.userName.first()
                 val id = userPreferences.userId.first()
-
-                val clientState = ClientUiState(
+                // Al actualizar currentUser, se activan los collects en el bloque init
+                _currentUser.value = ClientUiState(
                     clientId = id.toLongOrNull() ?: 0L,
                     name = name,
                     email = email
                 )
-
-                _currentUser.value = clientState
-                _login.update { it.copy(currentClient = clientState) }
-                id.toLongOrNull()?.let {
-                    loadPetsForClient(it)
-                    loadAppointmentsForClient(it)
-                }
+                loadProfile() // Cargar el perfil inmediatamente después de iniciar sesión
             }
+            _isUserLoggedIn.value = loggedIn
+            _sessionState.update { it.copy(isLoggedIn = loggedIn) }
         }
     }
 
-    // Login handlers
-    fun onLoginEmailChange(value: String) {
-        _login.update { it.copy(email = value, emailError = validateEmail(value)) }
-        recomputeLoginCanSubmit()
-    }
-
-    fun onLoginPassChange(value: String) {
-        _login.update { it.copy(pass = value) }
-        recomputeLoginCanSubmit()
-    }
-
-    private fun recomputeLoginCanSubmit() {
-        val s = _login.value
-        val can = s.emailError == null && s.email.isNotBlank() && s.pass.isNotBlank()
-        _login.update { it.copy(canSubmit = can) }
-    }
-
-    // 🔄 MODIFICADO: submitLogin con mensajes de sesión
     fun submitLogin() {
         val s = _login.value
         if (!s.canSubmit || s.isSubmitting) return
-        viewModelScope.launch {
-            _login.update { it.copy(isSubmitting = true, errorMsg = null, success = false) }
-            delay(500)
 
+        viewModelScope.launch {
+            _login.update { it.copy(isSubmitting = true, errorMsg = null) }
             val result = repository.login(s.email.trim(), s.pass)
 
-            _login.update {
-                if (result.isSuccess) {
-                    val client = result.getOrNull()
+            if (result.isSuccess) {
+                val client = result.getOrNull()!!
+                userPreferences.setUserInfo(client.email, client.name, client.id.toString())
+                userPreferences.setLoggedIn(true)
 
-                    client?.let {
-                        userPreferences.setUserInfo(it.email, it.name, it.id.toString())
-                        userPreferences.setLoggedIn(true)
-                    }
+                // La actualización de _currentUser activará los flows de mascotas/citas
+                _currentUser.value = ClientUiState(
+                    clientId = client.id,
+                    name = client.name,
+                    email = client.email
+                )
+                _isUserLoggedIn.value = true
+                _login.update { it.copy(currentClient = _currentUser.value) }
 
-                    val clientState = client?.let {
-                        ClientUiState(
-                            clientId = it.id,
-                            name = it.name,
-                            email = it.email
-                        )
-                    }
-
-                    _isUserLoggedIn.value = true
-                    _currentUser.value = clientState ?: ClientUiState()
-
-                    // 🆕 NUEVO: Mostrar mensaje de éxito
-                    _sessionState.update { session ->
-                        session.copy(
-                            isLoggedIn = true,
-                            loginMessage = "¡Bienvenido ${client?.name ?: "Usuario"}!",
-                            showMessage = true,
-                            logoutMessage = null
-                        )
-                    }
-
-                    client?.id?.let {
-                        loadPetsForClient(it)
-                        loadAppointmentsForClient(it)
-                    }
-
+                _sessionState.update {
                     it.copy(
-                        isSubmitting = false,
-                        success = true,
-                        errorMsg = null,
-                        currentClient = clientState
-                    )
-                } else {
-                    // 🆕 NUEVO: Mensaje de error
-                    _sessionState.update { session ->
-                        session.copy(
-                            loginMessage = "Error al iniciar sesión: ${result.exceptionOrNull()?.message}",
-                            showMessage = true
-                        )
-                    }
-                    it.copy(
-                        isSubmitting = false,
-                        success = false,
-                        errorMsg = result.exceptionOrNull()?.message ?: "Error de autenticación"
+                        isLoggedIn = true,
+                        loginMessage = "¡Bienvenido ${client.name}!",
+                        showMessage = true
                     )
                 }
+                _login.update { it.copy(isSubmitting = false, success = true) }
+                loadProfile() // Cargar el perfil después del login exitoso
+            } else {
+                val error = result.exceptionOrNull()?.message ?: "Error de autenticación"
+                _sessionState.update { it.copy(loginMessage = error, showMessage = true) }
+                _login.update { it.copy(isSubmitting = false, success = false, errorMsg = error) }
             }
         }
     }
 
-    fun clearLoginResult() {
-        _login.update { it.copy(success = false, errorMsg = null) }
-    }
-
-    // 🆕 NUEVO: Función para limpiar mensajes de sesión
-    fun clearSessionMessage() {
-        _sessionState.update {
-            it.copy(
-                showMessage = false,
-                loginMessage = null,
-                logoutMessage = null
-            )
-        }
-    }
-
-    // Registro handlers
-    fun onNameChange(value: String) {
-        val filtered = value.filter { it.isLetter() || it.isWhitespace() }
-        _register.update {
-            it.copy(name = filtered, nameError = validateNameLettersOnly(filtered))
-        }
-        recomputeRegisterCanSubmit()
-    }
-
-    fun onRegisterEmailChange(value: String) {
-        _register.update { it.copy(email = value, emailError = validateEmail(value)) }
-        recomputeRegisterCanSubmit()
-    }
-
-    fun onPhoneChange(value: String) {
-        val digitsOnly = value.filter { it.isDigit() }
-        _register.update {
-            it.copy(phone = digitsOnly, phoneError = validatePhoneDigitsOnly(digitsOnly))
-        }
-        recomputeRegisterCanSubmit()
-    }
-
-    fun onAddressChange(value: String) {
-        _register.update { it.copy(address = value, addressError = validateAddress(value)) }
-        recomputeRegisterCanSubmit()
-    }
-
-    fun onEmergencyContactChange(value: String) {
-        val digitsOnly = value.filter { it.isDigit() }
-        _register.update {
-            it.copy(
-                emergencyContact = digitsOnly,
-                emergencyContactError = validateEmergencyContact(digitsOnly)
-            )
-        }
-        recomputeRegisterCanSubmit()
-    }
-
-    fun onRegisterPassChange(value: String) {
-        _register.update { it.copy(pass = value, passError = validateStrongPassword(value)) }
-        _register.update { it.copy(confirmError = validateConfirm(it.pass, it.confirm)) }
-        recomputeRegisterCanSubmit()
-    }
-
-    fun onConfirmChange(value: String) {
-        _register.update { it.copy(confirm = value, confirmError = validateConfirm(it.pass, value)) }
-        recomputeRegisterCanSubmit()
-    }
-
-    private fun recomputeRegisterCanSubmit() {
-        val s = _register.value
-        val noErrors = listOf(
-            s.nameError, s.emailError, s.phoneError,
-            s.addressError, s.emergencyContactError, s.passError, s.confirmError
-        ).all { it == null }
-
-        val filled = s.name.isNotBlank() && s.email.isNotBlank() &&
-                s.phone.isNotBlank() && s.pass.isNotBlank() &&
-                s.confirm.isNotBlank()
-
-        _register.update { it.copy(canSubmit = noErrors && filled) }
-    }
-
+    // [ ... submitRegister y logout se mantienen iguales, excepto por la limpieza de _profile en logout ]
     fun submitRegister() {
+        // ... (código submitRegister anterior)
         val s = _register.value
         if (!s.canSubmit || s.isSubmitting) return
-        viewModelScope.launch {
-            _register.update { it.copy(isSubmitting = true, errorMsg = null, success = false) }
-            delay(700)
 
+        viewModelScope.launch {
+            _register.update { it.copy(isSubmitting = true, errorMsg = null) }
             val result = repository.register(
                 name = s.name.trim(),
                 email = s.email.trim(),
@@ -323,206 +234,263 @@ class AuthViewModel(
                 password = s.pass
             )
 
-            _register.update {
-                if (result.isSuccess) {
-                    // 🆕 NUEVO: Mensaje de registro exitoso
-                    _sessionState.update { session ->
-                        session.copy(
-                            loginMessage = "¡Cuenta creada exitosamente! Ya puedes iniciar sesión",
-                            showMessage = true
-                        )
-                    }
-                    it.copy(isSubmitting = false, success = true, errorMsg = null)
-                } else {
+            if (result.isSuccess) {
+                _sessionState.update {
+                    it.copy(loginMessage = "¡Cuenta creada! Ya puedes iniciar sesión.", showMessage = true)
+                }
+                _register.update { it.copy(isSubmitting = false, success = true) }
+            } else {
+                val error = result.exceptionOrNull()?.message ?: "No se pudo registrar"
+                _register.update { it.copy(isSubmitting = false, success = false, errorMsg = error) }
+            }
+        }
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            userPreferences.clearUserData()
+            _isUserLoggedIn.value = false
+            _currentUser.value = ClientUiState()
+            _login.value = LoginUiState()
+            _register.value = RegisterUiState()
+            _selectedPet.value = SelectedPetUiState()
+            _profile.value = ProfileUiState() // ✅ Limpiar estado de perfil
+            _sessionState.update {
+                it.copy(
+                    isLoggedIn = false,
+                    logoutMessage = "Sesión cerrada.",
+                    showMessage = true
+                )
+            }
+        }
+    }
+
+    // --- LÓGICA DE PERFIL (NUEVA) ---
+
+    // ✅ Cargar información del perfil
+    fun loadProfile() {
+        viewModelScope.launch {
+            val userId = _currentUser.value.clientId
+            if (userId == 0L) return@launch
+
+            _profile.update { it.copy(isLoading = true, successMessage = null, errorMessage = null) }
+
+            val client = repository.getClientById(userId)
+            client?.let {
+                // Actualizar _profile con los datos del repositorio
+                _profile.value = ProfileUiState(
+                    name = it.name,
+                    email = it.email,
+                    phone = it.phone,
+                    address = it.address ?: "",
+                    emergencyContact = it.emergencyContact ?: "",
+                    isLoading = false
+                )
+            } ?: _profile.update { it.copy(isLoading = false, errorMessage = "No se encontró el perfil.") }
+        }
+    }
+
+    // ✅ Actualizar información personal
+    fun updateProfile(name: String, phone: String, address: String, emergency: String) {
+        viewModelScope.launch {
+            val id = _currentUser.value.clientId
+            _profile.update { it.copy(isLoading = true, successMessage = null, errorMessage = null) }
+
+            val result = repository.updateClientInfo(id, name, phone, address, emergency)
+            if (result.isSuccess) {
+                // También actualizamos el currentUser de la sesión si el nombre cambió
+                _currentUser.update { it.copy(name = name) }
+
+                _profile.update {
                     it.copy(
-                        isSubmitting = false,
-                        success = false,
-                        errorMsg = result.exceptionOrNull()?.message ?: "No se pudo registrar"
+                        isLoading = false,
+                        name = name, // Actualizar estado local para reflejar el cambio
+                        phone = phone,
+                        address = address,
+                        emergencyContact = emergency,
+                        successMessage = "Información actualizada con éxito"
+                    )
+                }
+            } else {
+                _profile.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = result.exceptionOrNull()?.message
                     )
                 }
             }
         }
     }
 
-    fun clearRegisterResult() {
-        _register.update { it.copy(success = false, errorMsg = null) }
-    }
+    // ✅ Cambiar contraseña
+    fun changePassword(newPass: String, confirm: String) {
+        if (newPass != confirm) {
+            _profile.update { it.copy(errorMessage = "Las contraseñas no coinciden") }
+            return
+        }
 
-    // OPERACIONES PARA MASCOTAS
-    fun loadPetsForClient(clientId: Long) {
         viewModelScope.launch {
-            _pets.update { it.copy(isLoading = true, error = null) }
-            try {
-                val petsList = repository.getPetsByOwner(clientId)
-                _pets.update { it.copy(pets = petsList, isLoading = false) }
+            val id = _currentUser.value.clientId
+            _profile.update { it.copy(isLoading = true, successMessage = null, errorMessage = null) }
 
-                _currentUser.update { client ->
-                    client.copy(petsCount = petsList.size)
+            val result = repository.changePassword(id, newPass)
+            if (result.isSuccess) {
+                _profile.update {
+                    it.copy(
+                        isLoading = false,
+                        successMessage = "Contraseña actualizada correctamente",
+                        // Limpiar campos de contraseña después del éxito
+                        newPassword = "",
+                        confirmPassword = ""
+                    )
                 }
-
-                _login.update { loginState ->
-                    loginState.currentClient?.let { client ->
-                        loginState.copy(
-                            currentClient = client.copy(petsCount = petsList.size)
-                        )
-                    } ?: loginState
+            } else {
+                _profile.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = result.exceptionOrNull()?.message
+                    )
                 }
-
-            } catch (e: Exception) {
-                _pets.update { it.copy(error = "Error al cargar mascotas", isLoading = false) }
             }
         }
     }
 
+    // --- OPERACIONES PARA MASCOTAS ---
     fun addPet(
         nombre: String,
         especie: String,
         raza: String,
-        fechaNacimiento: String? = null,
-        peso: Double? = null,
-        color: String? = null,
-        notasMedicas: String? = null
+        fechaNacimiento: String?,
+        peso: Double?,
+        color: String?,
+        notasMedicas: String?
     ) {
-        val clientId = _login.value.currentClient?.clientId ?: return
+        // ... (código addPet anterior)
+        val clientId = _currentUser.value.clientId
+        if (clientId == 0L) {
+            _pets.update { it.copy(error = "Error: Usuario no identificado.") }
+            return
+        }
 
         viewModelScope.launch {
             _pets.update { it.copy(isLoading = true, error = null) }
-            try {
-                val result = repository.addPet(
-                    ownerId = clientId,
-                    nombre = nombre,
-                    especie = especie,
-                    raza = raza,
-                    fechaNacimiento = fechaNacimiento,
-                    peso = peso,
-                    color = color,
-                    notasMedicas = notasMedicas
-                )
+            val result = repository.addPet(
+                ownerId = clientId,
+                nombre = nombre,
+                especie = especie,
+                raza = raza,
+                fechaNacimiento = fechaNacimiento,
+                peso = peso,
+                color = color,
+                notasMedicas = notasMedicas
+            )
 
-                if (result.isSuccess) {
-                    loadPetsForClient(clientId)
-                } else {
-                    _pets.update { it.copy(
-                        error = result.exceptionOrNull()?.message ?: "Error al agregar mascota",
+            if (result.isFailure) {
+                _pets.update {
+                    it.copy(
+                        error = result.exceptionOrNull()?.message ?: "Error al agregar mascota.",
                         isLoading = false
-                    )}
+                    )
                 }
-            } catch (e: Exception) {
-                _pets.update { it.copy(error = "Error al agregar mascota", isLoading = false) }
+            } else {
+                _pets.update { it.copy(isLoading = false) }
             }
         }
     }
 
-    fun updatePetWeight(petId: Long, nuevoPeso: Double) {
+    fun loadPetById(petId: Long) {
+        // ... (código loadPetById anterior)
         viewModelScope.launch {
+            _selectedPet.update { it.copy(isLoading = true, error = null, pet = null) }
             try {
-                repository.updatePetWeight(petId, nuevoPeso)
-                _login.value.currentClient?.clientId?.let { loadPetsForClient(it) }
+                val pet = repository.getPetById(petId)
+                _selectedPet.update { it.copy(pet = pet, isLoading = false) }
             } catch (e: Exception) {
-                _pets.update { it.copy(error = "Error al actualizar peso") }
+                _selectedPet.update { it.copy(error = "No se pudo cargar la mascota.", isLoading = false) }
             }
         }
     }
 
     fun deletePet(petId: Long) {
+        // ... (código deletePet anterior)
+        val clientId = _currentUser.value.clientId
+        if (clientId == 0L) return
+
         viewModelScope.launch {
             try {
                 repository.deletePet(petId)
-                _login.value.currentClient?.clientId?.let { loadPetsForClient(it) }
             } catch (e: Exception) {
-                _pets.update { it.copy(error = "Error al eliminar mascota") }
+                _pets.update { it.copy(error = "Error al eliminar mascota.") }
             }
         }
     }
 
-    // OPERACIONES PARA CITAS
-    fun loadAppointmentsForClient(clientId: Long) {
-        viewModelScope.launch {
-            _appointments.update { it.copy(isLoading = true, error = null) }
-            try {
-                val appointmentsList = repository.getAppointmentsByOwner(clientId)
-                _appointments.update { it.copy(appointments = appointmentsList, isLoading = false) }
-            } catch (e: Exception) {
-                _appointments.update { it.copy(error = "Error al cargar las citas", isLoading = false) }
-            }
+    // --- OPERACIONES PARA CITAS ---
+    fun addAppointment(petId: Long, date: Date, reason: String) {
+        // ... (código addAppointment anterior)
+        val clientId = _currentUser.value.clientId
+        if (clientId == 0L) {
+            _appointments.update { it.copy(error = "Error: Usuario no identificado.") }
+            return
         }
-    }
-
-    // Dentro de AuthViewModel.kt
-
-    // ... (otros StateFlow)
-    private val _selectedPet = MutableStateFlow<PetEntity?>(null)
-    val selectedPet: StateFlow<PetEntity?> = _selectedPet.asStateFlow()
-
-    // Nueva función para cargar una mascota por su ID
-    fun loadPetById(petId: Long) {
-        viewModelScope.launch {
-            // Asumimos que tienes una función en tu repositorio para esto
-            // ✅ CORRECCIÓN: Se usa la instancia 'repository' en lugar de la clase 'VetRepository'
-            _selectedPet.value = repository.getPetById(petId)
-        }
-    }
-
-
-    fun addAppointment(
-        petId: Long,
-        date: Date,
-        reason: String
-    ) {
-        val clientId = _login.value.currentClient?.clientId ?: return
-
-        // Validación de la fecha
         if (date.before(Date())) {
             _appointments.update { it.copy(error = "No se pueden crear citas en fechas pasadas.") }
             return
         }
 
         viewModelScope.launch {
-            _appointments.update { it.copy(isLoading = true, error = null) }
-            try {
-                val result = repository.addAppointment(
-                    ownerId = clientId,
-                    petId = petId,
-                    date = date,
-                    reason = reason
-                )
-
-                if (result.isSuccess) {
-                    loadAppointmentsForClient(clientId)
-                } else {
-                    _appointments.update { it.copy(
-                        error = result.exceptionOrNull()?.message ?: "Error al agregar la cita",
-                        isLoading = false
-                    )}
+            val result = repository.addAppointment(
+                ownerId = clientId,
+                petId = petId,
+                date = date,
+                reason = reason
+            )
+            if (result.isFailure) {
+                _appointments.update {
+                    it.copy(
+                        error = result.exceptionOrNull()?.message ?: "Error al agregar la cita."
+                    )
                 }
-            } catch (e: Exception) {
-                _appointments.update { it.copy(error = "Error al agregar la cita", isLoading = false) }
             }
         }
     }
 
-    //  logout con mensaje de sesión
-    fun logout() {
-        viewModelScope.launch {
-            userPreferences.clearUserData()
+    // --- LIMPIEZA Y HELPERS ---
+    fun clearSessionMessage() = _sessionState.update { it.copy(showMessage = false, loginMessage = null, logoutMessage = null) }
+    fun clearLoginResult() = _login.update { it.copy(success = false, errorMsg = null) }
+    fun clearRegisterResult() = _register.update { it.copy(success = false, errorMsg = null) }
 
-            // 🆕 NUEVO: Mensaje de logout
-            _sessionState.update { session ->
-                session.copy(
-                    isLoggedIn = false,
-                    logoutMessage = "Sesión cerrada correctamente",
-                    showMessage = true,
-                    loginMessage = null
-                )
-            }
+    // ✅ NUEVO HELPER: Limpiar mensajes de perfil
+    fun clearProfileMessage() = _profile.update { it.copy(successMessage = null, errorMessage = null) }
 
-            _isUserLoggedIn.value = false
-            _currentUser.value = ClientUiState()
-            _pets.update { PetsUiState() }
-            _appointments.update { AppointmentsUiState() }
-            _login.update { LoginUiState() }
-            _register.update { RegisterUiState() }
-        }
+
+    // --- HANDLERS DE FORMULARIOS ---
+    fun onLoginEmailChange(value: String) { _login.update { it.copy(email = value, emailError = validateEmail(value)) }; recomputeLoginCanSubmit() }
+    fun onLoginPassChange(value: String) { _login.update { it.copy(pass = value) }; recomputeLoginCanSubmit() }
+    private fun recomputeLoginCanSubmit() {
+        val s = _login.value
+        _login.update { it.copy(canSubmit = s.emailError == null && s.email.isNotBlank() && s.pass.isNotBlank()) }
     }
 
+    fun onNameChange(value: String) { _register.update { it.copy(name = value, nameError = validateNameLettersOnly(value)) }; recomputeRegisterCanSubmit() }
+    fun onRegisterEmailChange(value: String) { _register.update { it.copy(email = value, emailError = validateEmail(value)) }; recomputeRegisterCanSubmit() }
+    fun onPhoneChange(value: String) { _register.update { it.copy(phone = value, phoneError = validatePhoneDigitsOnly(value)) }; recomputeRegisterCanSubmit() }
+    fun onAddressChange(value: String) { _register.update { it.copy(address = value, addressError = validateAddress(value)) }; recomputeRegisterCanSubmit() }
+    fun onEmergencyContactChange(value: String) { _register.update { it.copy(emergencyContact = value, emergencyContactError = validateEmergencyContact(value)) }; recomputeRegisterCanSubmit() }
+    fun onRegisterPassChange(value: String) { _register.update { it.copy(pass = value, passError = validateStrongPassword(value), confirmError = validateConfirm(value, _register.value.confirm)) }; recomputeRegisterCanSubmit() }
+    fun onConfirmChange(value: String) { _register.update { it.copy(confirm = value, confirmError = validateConfirm(_register.value.pass, value)) }; recomputeRegisterCanSubmit() }
+    private fun recomputeRegisterCanSubmit() {
+        val s = _register.value
+        val noErrors = listOf(s.nameError, s.emailError, s.phoneError, s.addressError, s.emergencyContactError, s.passError, s.confirmError).all { it == null }
+        val filled = s.name.isNotBlank() && s.email.isNotBlank() && s.phone.isNotBlank() && s.pass.isNotBlank() && s.confirm.isNotBlank()
+        _register.update { it.copy(canSubmit = noErrors && filled) }
+    }
+
+    // ✅ NUEVOS HANDLERS: Para el formulario de edición de perfil
+    fun onProfileNameChange(value: String) = _profile.update { it.copy(name = value, errorMessage = null) }
+    fun onProfilePhoneChange(value: String) = _profile.update { it.copy(phone = value, errorMessage = null) }
+    fun onProfileAddressChange(value: String) = _profile.update { it.copy(address = value, errorMessage = null) }
+    fun onProfileEmergencyContactChange(value: String) = _profile.update { it.copy(emergencyContact = value, errorMessage = null) }
+    fun onProfileNewPasswordChange(value: String) = _profile.update { it.copy(newPassword = value, errorMessage = null) }
+    fun onProfileConfirmPasswordChange(value: String) = _profile.update { it.copy(confirmPassword = value, errorMessage = null) }
 }

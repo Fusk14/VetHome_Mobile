@@ -12,8 +12,6 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -21,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myapplicationv.viewmodel.AuthViewModel
 import java.util.Calendar
 
@@ -31,30 +30,42 @@ fun AddPetScreen(
     onPetAdded: () -> Unit,
     onBack: () -> Unit
 ) {
-    // --- Estados para los campos del formulario ---
+    // --- Estados locales del formulario ---
     var petName by remember { mutableStateOf("") }
     var species by remember { mutableStateOf("") }
     var breed by remember { mutableStateOf("") }
     var birthDate by remember { mutableStateOf("") }
+    var hasSubmitted by remember { mutableStateOf(false) } // ✅ Nuevo flag de control
 
-    // --- Lógica del Calendario ---
+    // --- Estado global (desde el ViewModel) ---
+    val petsState by vm.pets.collectAsStateWithLifecycle()
+
+    // --- Lógica del selector de fecha ---
     val context = LocalContext.current
     val calendar = Calendar.getInstance()
 
     val datePickerDialog = DatePickerDialog(
         context,
         { _: DatePicker, year: Int, month: Int, dayOfMonth: Int ->
-            // Formateamos la fecha para guardarla como "YYYY-MM-DD"
-            birthDate = "$year-${month + 1}-${dayOfMonth}"
+            val formattedMonth = String.format("%02d", month + 1)
+            val formattedDay = String.format("%02d", dayOfMonth)
+            birthDate = "$year-$formattedMonth-$formattedDay"
         },
         calendar.get(Calendar.YEAR),
         calendar.get(Calendar.MONTH),
         calendar.get(Calendar.DAY_OF_MONTH)
     )
-    // No se pueden seleccionar fechas futuras para un nacimiento
     datePickerDialog.datePicker.maxDate = calendar.timeInMillis
 
-    // --- Estructura de la Pantalla ---
+    // ✅ Navegar solo después de agregar una mascota correctamente
+    LaunchedEffect(petsState.isLoading, petsState.pets.size) {
+        if (hasSubmitted && !petsState.isLoading && petsState.error == null) {
+            onPetAdded()
+            hasSubmitted = false
+        }
+    }
+
+    // --- Estructura general ---
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -71,12 +82,12 @@ fun AddPetScreen(
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState()) // Permite hacer scroll si el contenido es muy largo
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp), // Espacio entre elementos
+            verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // --- Icono de Cabecera ---
+            // --- Icono principal ---
             Icon(
                 imageVector = Icons.Default.Pets,
                 contentDescription = "Icono de Mascota",
@@ -90,9 +101,17 @@ fun AddPetScreen(
                 fontWeight = FontWeight.Bold
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            // --- Mostrar error si hay ---
+            petsState.error?.let { error ->
+                Text(
+                    text = error,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
-            // --- Campos del Formulario ---
+            // --- Campos del formulario ---
             OutlinedTextField(
                 value = petName,
                 onValueChange = { petName = it },
@@ -129,12 +148,12 @@ fun AddPetScreen(
                 )
             )
 
-            // --- Selector de Fecha de Nacimiento ---
+            // --- Campo de fecha de nacimiento ---
             OutlinedTextField(
                 value = birthDate,
-                onValueChange = { }, // El valor cambia solo desde el diálogo
+                onValueChange = { },
                 label = { Text("Fecha de Nacimiento") },
-                readOnly = true, // Evita que el usuario escriba manualmente
+                readOnly = true,
                 trailingIcon = {
                     IconButton(onClick = { datePickerDialog.show() }) {
                         Icon(
@@ -149,10 +168,10 @@ fun AddPetScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- Botón para Agregar Mascota ---
+            // --- Botón para agregar ---
             Button(
                 onClick = {
-                    // Normalizamos el input: primera letra mayúscula, resto minúscula.
+                    hasSubmitted = true
                     val normalizedSpecies = species.trim().replaceFirstChar {
                         if (it.isLowerCase()) it.titlecase() else it.toString()
                     }
@@ -161,18 +180,28 @@ fun AddPetScreen(
                         nombre = petName.trim(),
                         especie = normalizedSpecies,
                         raza = breed.trim(),
-                        fechaNacimiento = birthDate,
-                        // otros campos como peso, color, etc., irían aquí si los tuvieras
+                        fechaNacimiento = if (birthDate.isNotBlank()) birthDate else null,
+                        peso = null,
+                        color = null,
+                        notasMedicas = null
                     )
-
-                    // Una vez que se agrega, volvemos a la pantalla anterior
-                    onPetAdded()
                 },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                // El botón solo se activa si los campos obligatorios están llenos
-                enabled = petName.isNotBlank() && species.isNotBlank() && breed.isNotBlank()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                enabled = petName.isNotBlank() &&
+                        species.isNotBlank() &&
+                        breed.isNotBlank() &&
+                        !petsState.isLoading
             ) {
-                Text("Agregar Mascota", style = MaterialTheme.typography.titleMedium)
+                if (petsState.isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Text("Agregar Mascota", style = MaterialTheme.typography.titleMedium)
+                }
             }
 
             Text("* Campos obligatorios", style = MaterialTheme.typography.labelSmall)

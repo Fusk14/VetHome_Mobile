@@ -6,7 +6,7 @@ import com.example.myapplicationv.data.local.user.ClientDao
 import com.example.myapplicationv.data.local.user.ClientEntity
 import com.example.myapplicationv.data.local.pet.PetDao
 import com.example.myapplicationv.data.local.pet.PetEntity
-import com.example.myapplicationv.domain.validation.* // ← Importar validadores
+import com.example.myapplicationv.domain.validation.* // ← Validadores centralizados
 import kotlinx.coroutines.flow.Flow
 import java.util.Date
 
@@ -15,24 +15,23 @@ class VetRepository(
     private val petDao: PetDao,
     private val appointmentDao: AppointmentDao
 ) {
+    // ─────────────────────────────────────────────
+    // 🟢 LOGIN Y REGISTRO
+    // ─────────────────────────────────────────────
 
-    //validacion del login
     suspend fun login(email: String, password: String): Result<ClientEntity> {
-        // Usar validador centralizado para email
         val emailError = validateEmail(email)
-        if (emailError != null) {
+        if (emailError != null)
             return Result.failure(IllegalArgumentException(emailError))
-        }
 
-        val client = clientDao.getByEmail(email)                         // Busca cliente
-        return if (client != null && client.password == password) {      // Verifica pass
+        val client = clientDao.login(email, password)
+        return if (client != null) {
             Result.success(client)
         } else {
             Result.failure(IllegalArgumentException("Credenciales inválidas"))
         }
     }
 
-    //valida que en el sistema no exista el email y crea el cliente retornando el id del cliente creado
     suspend fun register(
         name: String,
         email: String,
@@ -41,7 +40,6 @@ class VetRepository(
         emergencyContact: String? = null,
         password: String
     ): Result<Long> {
-        // Usar validadores centralizados para todos los campos
         val nameError = validateNameLettersOnly(name)
         val emailError = validateEmail(email)
         val phoneError = validatePhoneDigitsOnly(phone)
@@ -49,19 +47,16 @@ class VetRepository(
         val emergencyContactError = validateEmergencyContact(emergencyContact ?: "")
         val passwordError = validateStrongPassword(password)
 
-        // Si hay algún error de validación, retornar failure
         val errors = listOf(nameError, emailError, phoneError, addressError, emergencyContactError, passwordError)
         val firstError = errors.firstOrNull { it != null }
-        if (firstError != null) {
+        if (firstError != null)
             return Result.failure(IllegalArgumentException(firstError))
-        }
 
-        val exists = clientDao.getByEmail(email) != null               // validamos si existe el email aqui
-        if (exists) {
+        val exists = clientDao.getByEmail(email) != null
+        if (exists)
             return Result.failure(IllegalStateException("El correo ya está registrado"))
-        }
 
-        val id = clientDao.insert(                                     // Inserta nuevo cliente
+        val id = clientDao.insert(
             ClientEntity(
                 name = name,
                 email = email,
@@ -71,26 +66,56 @@ class VetRepository(
                 password = password
             )
         )
-        return Result.success(id)                                      // Devuelve ID generado
+        return Result.success(id)
     }
 
-    //esta funcion busca al cliente por su id retornando el cliente o un null
+    // ─────────────────────────────────────────────
+    // 🟢 CLIENTE: Obtener y actualizar información
+    // ─────────────────────────────────────────────
+
     suspend fun getClientById(clientId: Long): ClientEntity? {
-        return clientDao.getById(clientId)
+        return clientDao.getClientById(clientId)
     }
 
+    suspend fun updateClientInfo(
+        clientId: Long,
+        name: String,
+        phone: String,
+        address: String?,
+        emergencyContact: String?
+    ): Result<Unit> {
+        val nameError = validateNameLettersOnly(name)
+        val phoneError = validatePhoneDigitsOnly(phone)
+        val addressError = validateAddress(address ?: "")
+        val emergencyError = validateEmergencyContact(emergencyContact ?: "")
 
-    fun getAllClientsFlow(): Flow<List<ClientEntity>> {
-        // Convertimos la función suspend a Flow para observar cambios en tiempo real
-        return kotlinx.coroutines.flow.flow {
-            emit(clientDao.getAll())
-        }
+        val firstError = listOf(nameError, phoneError, addressError, emergencyError)
+            .firstOrNull { it != null }
+
+        if (firstError != null)
+            return Result.failure(IllegalArgumentException(firstError))
+
+        clientDao.updateClientInfo(clientId, name, phone, address, emergencyContact)
+        return Result.success(Unit)
     }
+
+    suspend fun changePassword(clientId: Long, newPassword: String): Result<Unit> {
+        val passError = validateStrongPassword(newPassword)
+        if (passError != null)
+            return Result.failure(IllegalArgumentException(passError))
+
+        clientDao.updatePassword(clientId, newPassword)
+        return Result.success(Unit)
+    }
+
+    // ─────────────────────────────────────────────
+    // 🟣 MASCOTAS
+    // ─────────────────────────────────────────────
+
     suspend fun getPetById(petId: Long): PetEntity? {
         return petDao.getById(petId)
     }
 
-    //agregar una mascota
     suspend fun addPet(
         ownerId: Long,
         nombre: String,
@@ -101,27 +126,22 @@ class VetRepository(
         color: String? = null,
         notasMedicas: String? = null
     ): Result<Long> {
-        //Usar validadores centralizados para mascotas
         val nombreError = validatePetName(nombre)
         val especieError = validateSpecies(especie)
         val razaError = validateBreed(raza)
-        val fechaError = validateBirthDate(fechaNacimiento ?: "")
+        val fechaError = if (!fechaNacimiento.isNullOrBlank()) validateBirthDate(fechaNacimiento) else null
         val pesoError = if (peso != null) validateWeight(peso.toString()) else null
-        val colorError = validateColor(color ?: "")
-        val notasError = validateMedicalNotes(notasMedicas ?: "")
+        val colorError = if (!color.isNullOrBlank()) validateColor(color) else null
+        val notasError = if (!notasMedicas.isNullOrBlank()) validateMedicalNotes(notasMedicas) else null
 
-        // Verificar errores de validación
         val errors = listOf(nombreError, especieError, razaError, fechaError, pesoError, colorError, notasError)
         val firstError = errors.firstOrNull { it != null }
-        if (firstError != null) {
+        if (firstError != null)
             return Result.failure(IllegalArgumentException(firstError))
-        }
 
-        // Verificar que el dueño existe
-        val owner = clientDao.getById(ownerId)
-        if (owner == null) {
+        val owner = clientDao.getClientById(ownerId)
+        if (owner == null)
             return Result.failure(IllegalArgumentException("Cliente no encontrado"))
-        }
 
         val petId = petDao.insert(
             PetEntity(
@@ -138,53 +158,30 @@ class VetRepository(
         return Result.success(petId)
     }
 
-    //funcion para traer a todas las mascotas de un cliente
-    suspend fun getPetsByOwner(ownerId: Long): List<PetEntity> {
-        return petDao.getPetsByOwner(ownerId)
+    fun getPetsByOwner(ownerId: Long): Flow<List<PetEntity>> {
+        return petDao.getPetByOwnerId(ownerId)
     }
 
-    //observa los cambios de la mascota de un cliente
-    fun getPetsByOwnerFlow(ownerId: Long): Flow<List<PetEntity>> {
-        return kotlinx.coroutines.flow.flow {
-            emit(petDao.getPetsByOwner(ownerId))
-        }
-    }
-
-    //actualiza el peso
     suspend fun updatePetWeight(petId: Long, nuevoPeso: Double) {
-        // Validar peso antes de actualizar
         val pesoError = validateWeight(nuevoPeso.toString())
-        if (pesoError != null) {
+        if (pesoError != null)
             throw IllegalArgumentException(pesoError)
-        }
         petDao.updateWeight(petId, nuevoPeso)
     }
 
-    //elimina una mascota
     suspend fun deletePet(petId: Long) {
-        petDao.delete(petId)
+        petDao.deleteById(petId)
     }
 
-    //cuenta la cantidad de mascotas que tiene un cliente
     suspend fun getPetCountByOwner(ownerId: Long): Int {
         return petDao.countByOwner(ownerId)
     }
 
-    //esta funcion Cuenta el total de clientes registrados
-    //devuelve el Número total de clientes
-    suspend fun getTotalClientsCount(): Int {
-        return clientDao.count()
-    }
+    // ─────────────────────────────────────────────
+    // 🟡 CITAS (Appointments)
+    // ─────────────────────────────────────────────
 
-    // esta funcion cuenta total de mascotas registradas
-    // el return devuelve el Número total de mascotas
-    suspend fun getTotalPetsCount(): Int {
-        // Para esta demo, contamos todas las mascotas
-        return petDao.getPetsByOwner(1).size // Simplificado para demo
-    }
-
-    // Operaciones para citas
-    suspend fun getAppointmentsByOwner(ownerId: Long): List<AppointmentEntity> {
+    fun getAppointmentsByOwner(ownerId: Long): Flow<List<AppointmentEntity>> {
         return appointmentDao.getAppointmentsByOwner(ownerId)
     }
 
@@ -194,10 +191,9 @@ class VetRepository(
         date: Date,
         reason: String
     ): Result<Long> {
-        val owner = clientDao.getById(ownerId)
-        if (owner == null) {
+        val owner = clientDao.getClientById(ownerId)
+        if (owner == null)
             return Result.failure(IllegalArgumentException("Cliente no encontrado"))
-        }
 
         val appointmentId = appointmentDao.insert(
             AppointmentEntity(

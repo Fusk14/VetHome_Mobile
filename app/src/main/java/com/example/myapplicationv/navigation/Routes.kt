@@ -9,6 +9,11 @@ sealed class Route(val path: String) {
     object AddMascota : Route("add_mascota")
     object Citas : Route("citas")
     object AddCita : Route("add_cita")
+
+    // ✅ Nueva ruta: Perfil del usuario
+    object Perfil : Route("perfil")
+
+    // Rutas con argumentos
     object PetDetail : Route("pet_detail/{petId}") {
         fun createRoute(petId: Long) = "pet_detail/$petId"
     }

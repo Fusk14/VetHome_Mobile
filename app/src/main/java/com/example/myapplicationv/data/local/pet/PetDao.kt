@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PetDao {
@@ -11,8 +12,9 @@ interface PetDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(pet: PetEntity): Long
 
-    @Query("SELECT * FROM pets WHERE ownerId = :ownerId ORDER BY nombre ASC")
-    suspend fun getPetsByOwner(ownerId: Long): List<PetEntity>
+    @Query("SELECT * FROM pets WHERE ownerId = :ownerId")
+    fun getPetByOwnerId(ownerId: Long): Flow<List<PetEntity>>
+
 
     @Query("SELECT * FROM pets WHERE id = :petId LIMIT 1")
     suspend fun getById(petId: Long): PetEntity?
@@ -21,7 +23,7 @@ interface PetDao {
     suspend fun updateWeight(petId: Long, nuevoPeso: Double)
 
     @Query("DELETE FROM pets WHERE id = :petId")
-    suspend fun delete(petId: Long)
+    suspend fun deleteById(petId: Long) // <-- Devuelve Unit (nada)
 
     @Query("SELECT COUNT(*) FROM pets WHERE ownerId = :ownerId")
     suspend fun countByOwner(ownerId: Long): Int

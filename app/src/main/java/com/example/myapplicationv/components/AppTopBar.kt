@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -20,7 +21,9 @@ fun AppTopBar(
     onCitas: () -> Unit,
     onLogin: () -> Unit,
     isUserLoggedIn: Boolean = false,
-    userName: String = ""
+    userName: String = "",
+    // ✅ Nuevo parámetro aceptado (valor por defecto)
+    onProfile: () -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -32,7 +35,7 @@ fun AppTopBar(
         title = {
             Text(
                 text = if (isUserLoggedIn && userName.isNotBlank()) {
-                    "VetHome - Hola, ${userName.take(10)}" //TÍTULO PERSONALIZADO
+                    "VetHome - Hola, ${userName.take(10)}"
                 } else {
                     "VetHome - Veterinaria"
                 },
@@ -61,8 +64,13 @@ fun AppTopBar(
                 Icon(Icons.Filled.Event, contentDescription = "Citas")
             }
 
-            //  Mostrar icono de persona solo si no está logueado
-            if (!isUserLoggedIn) {
+            // Mostrar icono de persona si está logueado -> abre perfil
+            if (isUserLoggedIn) {
+                IconButton(onClick = onProfile) {
+                    Icon(Icons.Filled.Person, contentDescription = "Perfil")
+                }
+            } else {
+                // Mostrar icono de login si NO está logueado
                 IconButton(onClick = onLogin) {
                     Icon(Icons.Filled.Person, contentDescription = "Login")
                 }
@@ -93,6 +101,11 @@ fun AppTopBar(
                     DropdownMenuItem(
                         text = { Text("Login") },
                         onClick = { showMenu = false; onLogin() }
+                    )
+                } else {
+                    DropdownMenuItem(
+                        text = { Text("Mi Perfil") },
+                        onClick = { showMenu = false; onProfile() }
                     )
                 }
             }

@@ -41,12 +41,7 @@ fun AddAppointmentScreen(
     val petsState by vm.pets.collectAsStateWithLifecycle()
     val currentUserState by vm.currentUser.collectAsStateWithLifecycle()
 
-    // Cargar mascotas si es necesario
-    LaunchedEffect(currentUserState.clientId) {
-        if (currentUserState.clientId > 0) {
-            vm.loadPetsForClient(currentUserState.clientId)
-        }
-    }
+
 
     Scaffold(
         topBar = {
