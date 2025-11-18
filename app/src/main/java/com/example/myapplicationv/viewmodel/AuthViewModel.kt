@@ -5,13 +5,31 @@ import androidx.lifecycle.viewModelScope
 import com.example.myapplicationv.data.local.appointment.AppointmentEntity
 import com.example.myapplicationv.data.local.pet.PetEntity
 import com.example.myapplicationv.data.local.storage.UserPreferences
+import com.example.myapplicationv.data.local.user.ClientEntity
+import com.example.myapplicationv.data.local.resena.ResenaEntity
 import com.example.myapplicationv.data.repository.VetRepository
 import com.example.myapplicationv.domain.validation.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Date
 
-// --- ESTADOS DE PERFIL (NUEVOS) ---
+// --------------------------------------------------------------------------------------
+// --- DATA CLASSES DE ESTADO (NUEVAS: RESEÑAS) ---
+// --------------------------------------------------------------------------------------
+
+data class ResenasUiState(
+    val resenas: List<ResenaEntity> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null
+)
+
+data class ResenaDetailUiState(
+    val resena: ResenaEntity? = null,
+    val isLoading: Boolean = false,
+    val error: String? = null
+)
+
+// --- ESTADOS DE PERFIL (EXISTENTES) ---
 data class ProfileUiState(
     val name: String = "",
     val email: String = "",
@@ -63,7 +81,33 @@ data class ClientUiState(
     val clientId: Long = 0L,
     val name: String = "",
     val email: String = "",
-    val petsCount: Int = 0
+    val petsCount: Int = 0,
+    val role: String = "user"
+)
+
+data class EditUserUiState(
+    val user: ClientEntity? = null,
+    val isLoading: Boolean = false,
+    val error: String? = null,
+    val isUserUpdated: Boolean = false
+)
+
+data class AllClientsUiState(
+    val clients: List<ClientEntity> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null
+)
+
+data class AllPetsUiState(
+    val pets: List<PetEntity> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null
+)
+
+data class AllAppointmentsUiState(
+    val appointments: List<AppointmentEntity> = emptyList(),
+    val isLoading: Boolean = false,
+    val error: String? = null
 )
 
 data class PetsUiState(
@@ -107,11 +151,30 @@ class AuthViewModel(
     private val _currentUser = MutableStateFlow(ClientUiState())
     val currentUser: StateFlow<ClientUiState> = _currentUser.asStateFlow()
 
+    private val _userRole = MutableStateFlow("user")
+    val userRole: StateFlow<String> = _userRole.asStateFlow()
+
+    private val _editUser = MutableStateFlow(EditUserUiState())
+    val editUser: StateFlow<EditUserUiState> = _editUser.asStateFlow()
+
+    private val _allClients = MutableStateFlow(AllClientsUiState())
+    val allClients: StateFlow<AllClientsUiState> = _allClients.asStateFlow()
+
+    private val _allPets = MutableStateFlow(AllPetsUiState())
+    val allPets: StateFlow<AllPetsUiState> = _allPets.asStateFlow()
+
+    private val _allAppointments = MutableStateFlow(AllAppointmentsUiState())
+    val allAppointments: StateFlow<AllAppointmentsUiState> = _allAppointments.asStateFlow()
+
     private val _login = MutableStateFlow(LoginUiState())
     val login: StateFlow<LoginUiState> = _login.asStateFlow()
 
     private val _register = MutableStateFlow(RegisterUiState())
     val register: StateFlow<RegisterUiState> = _register.asStateFlow()
+
+    // ✅ NUEVO ESTADO: Éxito en el registro
+    private val _showRegistrationSuccess = MutableStateFlow(false)
+    val showRegistrationSuccess: StateFlow<Boolean> = _showRegistrationSuccess.asStateFlow()
 
     private val _pets = MutableStateFlow(PetsUiState())
     val pets: StateFlow<PetsUiState> = _pets.asStateFlow()
@@ -122,34 +185,41 @@ class AuthViewModel(
     private val _appointments = MutableStateFlow(AppointmentsUiState())
     val appointments: StateFlow<AppointmentsUiState> = _appointments.asStateFlow()
 
-    // --- ESTADO DE PERFIL (NUEVO) ---
     private val _profile = MutableStateFlow(ProfileUiState())
     val profile: StateFlow<ProfileUiState> = _profile.asStateFlow()
 
+    // 🆕 ESTADOS DE RESEÑAS
+    private val _resenas = MutableStateFlow(ResenasUiState())
+    val resenas: StateFlow<ResenasUiState> = _resenas.asStateFlow()
+
+    private val _resenaDetail = MutableStateFlow(ResenaDetailUiState())
+    val resenaDetail: StateFlow<ResenaDetailUiState> = _resenaDetail.asStateFlow()
+
 
     init {
-        // ✅ MEJORA COMBINADA: Un único launch para las subscripciones
         viewModelScope.launch {
             currentUser.collect { user ->
                 if (user.clientId != 0L) {
-                    // Subscripción reactiva al Flow de mascotas
                     launch {
                         repository.getPetsByOwner(user.clientId).collect { petsList ->
                             _pets.update { it.copy(pets = petsList, isLoading = false) }
                             _currentUser.update { it.copy(petsCount = petsList.size) }
                         }
                     }
-                    // Subscripción reactiva al Flow de citas
                     launch {
                         repository.getAppointmentsByOwner(user.clientId).collect { appointmentsList ->
                             _appointments.update { it.copy(appointments = appointmentsList, isLoading = false) }
                         }
                     }
+                    // 🆕 Cargar reseñas al iniciar sesión
+                    launch {
+                        loadResenas()
+                    }
                 } else {
-                    // Limpia las listas si el usuario cierra sesión
                     _pets.update { PetsUiState() }
                     _appointments.update { AppointmentsUiState() }
-                    _profile.value = ProfileUiState() // Limpiar el estado del perfil
+                    _profile.value = ProfileUiState()
+                    _resenas.value = ResenasUiState() // 🆕 Limpiar reseñas al cerrar sesión
                 }
             }
         }
@@ -165,13 +235,16 @@ class AuthViewModel(
                 val email = userPreferences.userEmail.first()
                 val name = userPreferences.userName.first()
                 val id = userPreferences.userId.first()
-                // Al actualizar currentUser, se activan los collects en el bloque init
+                val role = userPreferences.userRole.first()
+
                 _currentUser.value = ClientUiState(
                     clientId = id.toLongOrNull() ?: 0L,
                     name = name,
-                    email = email
+                    email = email,
+                    role = role
                 )
-                loadProfile() // Cargar el perfil inmediatamente después de iniciar sesión
+                _userRole.value = role
+                loadProfile()
             }
             _isUserLoggedIn.value = loggedIn
             _sessionState.update { it.copy(isLoggedIn = loggedIn) }
@@ -188,15 +261,25 @@ class AuthViewModel(
 
             if (result.isSuccess) {
                 val client = result.getOrNull()!!
-                userPreferences.setUserInfo(client.email, client.name, client.id.toString())
+
+                userPreferences.setUserInfo(
+                    client.email,
+                    client.name,
+                    client.id.toString(),
+                    client.role
+                )
                 userPreferences.setLoggedIn(true)
 
-                // La actualización de _currentUser activará los flows de mascotas/citas
-                _currentUser.value = ClientUiState(
+                val clientState = ClientUiState(
                     clientId = client.id,
                     name = client.name,
-                    email = client.email
+                    email = client.email,
+                    role = client.role
                 )
+
+                _currentUser.value = clientState
+                _userRole.value = client.role
+
                 _isUserLoggedIn.value = true
                 _login.update { it.copy(currentClient = _currentUser.value) }
 
@@ -208,40 +291,11 @@ class AuthViewModel(
                     )
                 }
                 _login.update { it.copy(isSubmitting = false, success = true) }
-                loadProfile() // Cargar el perfil después del login exitoso
+                loadProfile()
             } else {
                 val error = result.exceptionOrNull()?.message ?: "Error de autenticación"
                 _sessionState.update { it.copy(loginMessage = error, showMessage = true) }
                 _login.update { it.copy(isSubmitting = false, success = false, errorMsg = error) }
-            }
-        }
-    }
-
-    // [ ... submitRegister y logout se mantienen iguales, excepto por la limpieza de _profile en logout ]
-    fun submitRegister() {
-        // ... (código submitRegister anterior)
-        val s = _register.value
-        if (!s.canSubmit || s.isSubmitting) return
-
-        viewModelScope.launch {
-            _register.update { it.copy(isSubmitting = true, errorMsg = null) }
-            val result = repository.register(
-                name = s.name.trim(),
-                email = s.email.trim(),
-                phone = s.phone.trim(),
-                address = s.address.ifBlank { null },
-                emergencyContact = s.emergencyContact.ifBlank { null },
-                password = s.pass
-            )
-
-            if (result.isSuccess) {
-                _sessionState.update {
-                    it.copy(loginMessage = "¡Cuenta creada! Ya puedes iniciar sesión.", showMessage = true)
-                }
-                _register.update { it.copy(isSubmitting = false, success = true) }
-            } else {
-                val error = result.exceptionOrNull()?.message ?: "No se pudo registrar"
-                _register.update { it.copy(isSubmitting = false, success = false, errorMsg = error) }
             }
         }
     }
@@ -251,10 +305,13 @@ class AuthViewModel(
             userPreferences.clearUserData()
             _isUserLoggedIn.value = false
             _currentUser.value = ClientUiState()
+            _userRole.value = "user"
             _login.value = LoginUiState()
             _register.value = RegisterUiState()
             _selectedPet.value = SelectedPetUiState()
-            _profile.value = ProfileUiState() // ✅ Limpiar estado de perfil
+            _profile.value = ProfileUiState()
+            _resenas.value = ResenasUiState() // 🆕 Limpiar reseñas
+            _resenaDetail.value = ResenaDetailUiState() // 🆕 Limpiar detalle de reseña
             _sessionState.update {
                 it.copy(
                     isLoggedIn = false,
@@ -265,9 +322,14 @@ class AuthViewModel(
         }
     }
 
-    // --- LÓGICA DE PERFIL (NUEVA) ---
+    fun isCurrentUserAdmin(): Boolean {
+        return _userRole.value == "admin"
+    }
 
-    // ✅ Cargar información del perfil
+    // --------------------------------------------------------------------------------------
+    // --- LÓGICA DE PERFIL ---
+    // --------------------------------------------------------------------------------------
+
     fun loadProfile() {
         viewModelScope.launch {
             val userId = _currentUser.value.clientId
@@ -277,7 +339,6 @@ class AuthViewModel(
 
             val client = repository.getClientById(userId)
             client?.let {
-                // Actualizar _profile con los datos del repositorio
                 _profile.value = ProfileUiState(
                     name = it.name,
                     email = it.email,
@@ -290,7 +351,6 @@ class AuthViewModel(
         }
     }
 
-    // ✅ Actualizar información personal
     fun updateProfile(name: String, phone: String, address: String, emergency: String) {
         viewModelScope.launch {
             val id = _currentUser.value.clientId
@@ -298,13 +358,14 @@ class AuthViewModel(
 
             val result = repository.updateClientInfo(id, name, phone, address, emergency)
             if (result.isSuccess) {
-                // También actualizamos el currentUser de la sesión si el nombre cambió
-                _currentUser.update { it.copy(name = name) }
+                if (_currentUser.value.name != name) {
+                    _currentUser.update { it.copy(name = name) }
+                }
 
                 _profile.update {
                     it.copy(
                         isLoading = false,
-                        name = name, // Actualizar estado local para reflejar el cambio
+                        name = name,
                         phone = phone,
                         address = address,
                         emergencyContact = emergency,
@@ -322,7 +383,6 @@ class AuthViewModel(
         }
     }
 
-    // ✅ Cambiar contraseña
     fun changePassword(newPass: String, confirm: String) {
         if (newPass != confirm) {
             _profile.update { it.copy(errorMessage = "Las contraseñas no coinciden") }
@@ -339,7 +399,6 @@ class AuthViewModel(
                     it.copy(
                         isLoading = false,
                         successMessage = "Contraseña actualizada correctamente",
-                        // Limpiar campos de contraseña después del éxito
                         newPassword = "",
                         confirmPassword = ""
                     )
@@ -355,7 +414,125 @@ class AuthViewModel(
         }
     }
 
-    // --- OPERACIONES PARA MASCOTAS ---
+    // --------------------------------------------------------------------------------------
+    // --- FUNCIONES DE ADMINISTRACIÓN Y DATOS GLOBALES ---
+    // --------------------------------------------------------------------------------------
+
+    fun loadUserById(userId: Long) {
+        viewModelScope.launch {
+            _editUser.update { it.copy(isLoading = true, error = null, isUserUpdated = false) }
+            val user = repository.getClientById(userId)
+            _editUser.update { it.copy(user = user, isLoading = false) }
+        }
+    }
+
+    fun updateUser(userId: Long, name: String, phone: String, address: String, emergencyContact: String) {
+        viewModelScope.launch {
+            repository.updateClientInfo(userId, name, phone, address, emergencyContact)
+            _editUser.update { it.copy(isUserUpdated = true) }
+        }
+    }
+
+    fun loadAllClients() {
+        viewModelScope.launch {
+            _allClients.update { it.copy(isLoading = true, error = null) }
+            repository.getAllClients().collect { clientsList ->
+                _allClients.update {
+                    it.copy(
+                        clients = clientsList,
+                        isLoading = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun loadAllPets() {
+        viewModelScope.launch {
+            _allPets.update { it.copy(isLoading = true, error = null) }
+            repository.getAllPets().collect { petsList ->
+                _allPets.update {
+                    it.copy(
+                        pets = petsList,
+                        isLoading = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun loadAllAppointments() {
+        viewModelScope.launch {
+            _allAppointments.update { it.copy(isLoading = true, error = null) }
+            repository.getAllAppointments().collect { appointmentsList ->
+                _allAppointments.update {
+                    it.copy(
+                        appointments = appointmentsList,
+                        isLoading = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun deleteUserAndData(clientId: Long) {
+        viewModelScope.launch {
+            repository.deleteUserAndData(clientId)
+        }
+    }
+
+    fun deletePetById(petId: Long) {
+        viewModelScope.launch {
+            repository.deletePet(petId)
+        }
+    }
+
+    fun deleteAppointmentById(appointmentId: Long) {
+        viewModelScope.launch {
+            repository.deleteAppointmentById(appointmentId)
+        }
+    }
+
+    // ✅ MODIFICACIÓN: Función submitRegister
+    fun submitRegister() {
+        val s = _register.value
+        if (!s.canSubmit || s.isSubmitting) return
+
+        viewModelScope.launch {
+            _register.update { it.copy(isSubmitting = true, errorMsg = null) }
+            val result = repository.register(
+                name = s.name.trim(),
+                email = s.email.trim(),
+                phone = s.phone.trim(),
+                address = s.address.ifBlank { null },
+                emergencyContact = s.emergencyContact.ifBlank { null },
+                password = s.pass
+            )
+
+            if (result.isSuccess) {
+                _register.update { it.copy(isSubmitting = false, success = true) }
+                _showRegistrationSuccess.value = true // ✅ Mostrar alerta de éxito
+                clearRegistrationForm() // ✅ Limpiar formulario
+            } else {
+                val error = result.exceptionOrNull()?.message ?: "No se pudo registrar"
+                _register.update { it.copy(isSubmitting = false, success = false, errorMsg = error) }
+            }
+        }
+    }
+
+    // ✅ NUEVA FUNCIÓN: Limpiar el formulario de registro
+    fun clearRegistrationForm() {
+        _register.update {
+            RegisterUiState() // Esto reinicia todo a valores por defecto
+        }
+    }
+
+    // ✅ NUEVA FUNCIÓN: Ocultar la alerta de éxito
+    fun hideRegistrationSuccess() {
+        _showRegistrationSuccess.value = false
+    }
+
+
     fun addPet(
         nombre: String,
         especie: String,
@@ -365,7 +542,6 @@ class AuthViewModel(
         color: String?,
         notasMedicas: String?
     ) {
-        // ... (código addPet anterior)
         val clientId = _currentUser.value.clientId
         if (clientId == 0L) {
             _pets.update { it.copy(error = "Error: Usuario no identificado.") }
@@ -399,7 +575,6 @@ class AuthViewModel(
     }
 
     fun loadPetById(petId: Long) {
-        // ... (código loadPetById anterior)
         viewModelScope.launch {
             _selectedPet.update { it.copy(isLoading = true, error = null, pet = null) }
             try {
@@ -412,7 +587,6 @@ class AuthViewModel(
     }
 
     fun deletePet(petId: Long) {
-        // ... (código deletePet anterior)
         val clientId = _currentUser.value.clientId
         if (clientId == 0L) return
 
@@ -425,9 +599,7 @@ class AuthViewModel(
         }
     }
 
-    // --- OPERACIONES PARA CITAS ---
     fun addAppointment(petId: Long, date: Date, reason: String) {
-        // ... (código addAppointment anterior)
         val clientId = _currentUser.value.clientId
         if (clientId == 0L) {
             _appointments.update { it.copy(error = "Error: Usuario no identificado.") }
@@ -455,16 +627,103 @@ class AuthViewModel(
         }
     }
 
-    // --- LIMPIEZA Y HELPERS ---
+    // --------------------------------------------------------------------------------------
+    // ⭐ FUNCIONES DE RESEÑAS
+    // --------------------------------------------------------------------------------------
+
+    fun loadResenas() {
+        val userId = _currentUser.value.clientId
+        if (userId == 0L) return
+
+        viewModelScope.launch {
+            _resenas.update { it.copy(isLoading = true, error = null) }
+            // Recolectar Flow del repositorio
+            repository.obtenerResenasPorUsuario(userId).collect { resenasList ->
+                _resenas.update {
+                    it.copy(
+                        resenas = resenasList,
+                        isLoading = false
+                    )
+                }
+            }
+        }
+    }
+
+    fun crearResena(
+        mascotaId: Long,
+        mascotaNombre: String,
+        calificacion: Int,
+        comentario: String,
+        fecha: String
+    ) {
+        val userId = _currentUser.value.clientId
+        if (userId == 0L) {
+            _resenas.update { it.copy(error = "Error: Usuario no identificado.") }
+            return
+        }
+
+        viewModelScope.launch {
+            _resenas.update { it.copy(isLoading = true, error = null) }
+            val result = repository.crearResena(
+                usuarioId = userId,
+                mascotaId = mascotaId,
+                mascotaNombre = mascotaNombre,
+                calificacion = calificacion,
+                comentario = comentario,
+                fecha = fecha
+            )
+
+            if (result.isFailure) {
+                _resenas.update {
+                    it.copy(
+                        error = result.exceptionOrNull()?.message ?: "Error al crear reseña.",
+                        isLoading = false
+                    )
+                }
+            } else {
+                // Éxito: el Flow de loadResenas se encargará de actualizar la lista automáticamente.
+                _resenas.update { it.copy(isLoading = false) }
+            }
+        }
+    }
+
+    fun loadResenaById(resenaId: Long) {
+        viewModelScope.launch {
+            _resenaDetail.update { it.copy(isLoading = true, error = null, resena = null) }
+            try {
+                val resena = repository.obtenerResenaPorId(resenaId)
+                _resenaDetail.update { it.copy(resena = resena, isLoading = false) }
+            } catch (e: Exception) {
+                _resenaDetail.update { it.copy(error = "No se pudo cargar la reseña.", isLoading = false) }
+            }
+        }
+    }
+
+    fun deleteResena(resenaId: Long) {
+        viewModelScope.launch {
+            try {
+                repository.eliminarResena(resenaId)
+                // Recargar la lista después de eliminar (aunque el Flow debería hacerlo)
+                loadResenas()
+            } catch (e: Exception) {
+                _resenas.update { it.copy(error = "Error al eliminar reseña.") }
+            }
+        }
+    }
+
+    // --------------------------------------------------------------------------------------
+    // --- CLEAR HANDLERS ---
+    // --------------------------------------------------------------------------------------
+
     fun clearSessionMessage() = _sessionState.update { it.copy(showMessage = false, loginMessage = null, logoutMessage = null) }
     fun clearLoginResult() = _login.update { it.copy(success = false, errorMsg = null) }
     fun clearRegisterResult() = _register.update { it.copy(success = false, errorMsg = null) }
-
-    // ✅ NUEVO HELPER: Limpiar mensajes de perfil
     fun clearProfileMessage() = _profile.update { it.copy(successMessage = null, errorMessage = null) }
 
-
+    // --------------------------------------------------------------------------------------
     // --- HANDLERS DE FORMULARIOS ---
+    // --------------------------------------------------------------------------------------
+
     fun onLoginEmailChange(value: String) { _login.update { it.copy(email = value, emailError = validateEmail(value)) }; recomputeLoginCanSubmit() }
     fun onLoginPassChange(value: String) { _login.update { it.copy(pass = value) }; recomputeLoginCanSubmit() }
     private fun recomputeLoginCanSubmit() {
@@ -486,7 +745,6 @@ class AuthViewModel(
         _register.update { it.copy(canSubmit = noErrors && filled) }
     }
 
-    // ✅ NUEVOS HANDLERS: Para el formulario de edición de perfil
     fun onProfileNameChange(value: String) = _profile.update { it.copy(name = value, errorMessage = null) }
     fun onProfilePhoneChange(value: String) = _profile.update { it.copy(phone = value, errorMessage = null) }
     fun onProfileAddressChange(value: String) = _profile.update { it.copy(address = value, errorMessage = null) }

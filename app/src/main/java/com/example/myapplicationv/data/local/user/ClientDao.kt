@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ClientDao {
@@ -11,11 +12,17 @@ interface ClientDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(client: ClientEntity): Long
 
+    @Query("SELECT * FROM clients")
+    fun getAllClients(): Flow<List<ClientEntity>>
+
     @Query("SELECT * FROM clients WHERE email = :email AND password = :password LIMIT 1")
     suspend fun login(email: String, password: String): ClientEntity?
 
     @Query("SELECT * FROM clients WHERE id = :clientId LIMIT 1")
-    suspend fun getClientById(clientId: Long): ClientEntity?
+    suspend fun getById(clientId: Long): ClientEntity?
+
+    @Query("DELETE FROM clients WHERE id = :clientId")
+    suspend fun deleteById(clientId: Long)
 
     // ✅ Nueva función: actualizar datos personales
     @Query("""

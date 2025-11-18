@@ -6,17 +6,20 @@ import com.example.myapplicationv.data.local.user.ClientDao
 import com.example.myapplicationv.data.local.user.ClientEntity
 import com.example.myapplicationv.data.local.pet.PetDao
 import com.example.myapplicationv.data.local.pet.PetEntity
-import com.example.myapplicationv.domain.validation.* // ← Validadores centralizados
-import kotlinx.coroutines.flow.Flow
+// 🆕 Importaciones necesarias para reseñas
+import com.example.myapplicationv.data.local.resena.ResenaDao
+import com.example.myapplicationv.data.local.resena.ResenaEntity
+import com.example.myapplicationv.domain.validation.* import kotlinx.coroutines.flow.Flow
 import java.util.Date
 
 class VetRepository(
     private val clientDao: ClientDao,
     private val petDao: PetDao,
-    private val appointmentDao: AppointmentDao
+    private val appointmentDao: AppointmentDao,
+    private val resenaDao: ResenaDao // ✅ NUEVO: Agregar el DAO de reseñas
 ) {
     // ─────────────────────────────────────────────
-    // 🟢 LOGIN Y REGISTRO
+    // 🟢 LOGIN, REGISTRO Y ADMIN
     // ─────────────────────────────────────────────
 
     suspend fun login(email: String, password: String): Result<ClientEntity> {
@@ -24,8 +27,9 @@ class VetRepository(
         if (emailError != null)
             return Result.failure(IllegalArgumentException(emailError))
 
-        val client = clientDao.login(email, password)
-        return if (client != null) {
+        val client = clientDao.getByEmail(email)
+
+        return if (client != null && client.password == password) {
             Result.success(client)
         } else {
             Result.failure(IllegalArgumentException("Credenciales inválidas"))
@@ -69,12 +73,28 @@ class VetRepository(
         return Result.success(id)
     }
 
+    suspend fun isAdmin(clientId: Long): Boolean {
+        val client = clientDao.getById(clientId)
+        return client?.role == "admin"
+    }
+
+    fun getAllClients(): Flow<List<ClientEntity>> {
+        return clientDao.getAllClients()
+    }
+
     // ─────────────────────────────────────────────
     // 🟢 CLIENTE: Obtener y actualizar información
     // ─────────────────────────────────────────────
 
     suspend fun getClientById(clientId: Long): ClientEntity? {
-        return clientDao.getClientById(clientId)
+        return clientDao.getById(clientId)
+    }
+
+    suspend fun deleteUserAndData(clientId: Long) {
+        appointmentDao.deleteByOwnerId(clientId)
+        petDao.deleteByOwnerId(clientId)
+        // TODO: resenaDao.deleteByUserId(clientId) // Si existe esta función
+        clientDao.deleteById(clientId)
     }
 
     suspend fun updateClientInfo(
@@ -112,6 +132,10 @@ class VetRepository(
     // 🟣 MASCOTAS
     // ─────────────────────────────────────────────
 
+    fun getAllPets(): Flow<List<PetEntity>> {
+        return petDao.getAllPets()
+    }
+
     suspend fun getPetById(petId: Long): PetEntity? {
         return petDao.getById(petId)
     }
@@ -139,7 +163,7 @@ class VetRepository(
         if (firstError != null)
             return Result.failure(IllegalArgumentException(firstError))
 
-        val owner = clientDao.getClientById(ownerId)
+        val owner = clientDao.getById(ownerId)
         if (owner == null)
             return Result.failure(IllegalArgumentException("Cliente no encontrado"))
 
@@ -181,8 +205,16 @@ class VetRepository(
     // 🟡 CITAS (Appointments)
     // ─────────────────────────────────────────────
 
+    fun getAllAppointments(): Flow<List<AppointmentEntity>> {
+        return appointmentDao.getAllAppointments()
+    }
+
     fun getAppointmentsByOwner(ownerId: Long): Flow<List<AppointmentEntity>> {
         return appointmentDao.getAppointmentsByOwner(ownerId)
+    }
+
+    suspend fun deleteAppointmentById(appointmentId: Long) {
+        appointmentDao.deleteAppointmentById(appointmentId)
     }
 
     suspend fun addAppointment(
@@ -191,7 +223,7 @@ class VetRepository(
         date: Date,
         reason: String
     ): Result<Long> {
-        val owner = clientDao.getClientById(ownerId)
+        val owner = clientDao.getById(ownerId)
         if (owner == null)
             return Result.failure(IllegalArgumentException("Cliente no encontrado"))
 
@@ -204,5 +236,63 @@ class VetRepository(
             )
         )
         return Result.success(appointmentId)
+    }
+
+    // ─────────────────────────────────────────────
+    // ⭐ RESEÑAS
+    // ─────────────────────────────────────────────
+
+    suspend fun crearResena(
+        usuarioId: Long,
+        mascotaId: Long,
+        mascotaNombre: String,
+        calificacion: Int,
+        comentario: String,
+        fecha: String // Nota: Idealmente se usaría un objeto Date o Instant
+    ): Result<Long> {
+        // Validaciones
+        if (calificacion < 1 || calificacion > 5) {
+            return Result.failure(IllegalArgumentException("La calificación debe ser entre 1 y 5"))
+        }
+
+        if (comentario.isBlank()) {
+            return Result.failure(IllegalArgumentException("El comentario no puede estar vacío"))
+        }
+
+        if (comentario.length > 500) {
+            return Result.failure(IllegalArgumentException("El comentario es demasiado largo"))
+        }
+
+        try {
+            val resenaId = resenaDao.insertar(
+                ResenaEntity(
+                    usuarioId = usuarioId,
+                    mascotaId = mascotaId,
+                    mascotaNombre = mascotaNombre,
+                    calificacion = calificacion,
+                    comentario = comentario,
+                    fecha = fecha
+                )
+            )
+            return Result.success(resenaId)
+        } catch (e: Exception) {
+            return Result.failure(e)
+        }
+    }
+
+    fun obtenerResenasPorUsuario(usuarioId: Long): Flow<List<ResenaEntity>> {
+        return resenaDao.obtenerPorUsuario(usuarioId)
+    }
+
+    suspend fun obtenerResenaPorId(id: Long): ResenaEntity? {
+        return resenaDao.obtenerPorId(id)
+    }
+
+    suspend fun eliminarResena(id: Long) {
+        resenaDao.eliminarPorId(id)
+    }
+
+    suspend fun obtenerPromedioCalificacionMascota(mascotaId: Long): Double? {
+        return resenaDao.obtenerPromedioCalificacion(mascotaId)
     }
 }

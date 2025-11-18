@@ -12,6 +12,9 @@ interface PetDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(pet: PetEntity): Long
 
+    @Query("SELECT * FROM pets")
+    fun getAllPets(): Flow<List<PetEntity>>
+
     @Query("SELECT * FROM pets WHERE ownerId = :ownerId")
     fun getPetByOwnerId(ownerId: Long): Flow<List<PetEntity>>
 
@@ -24,6 +27,9 @@ interface PetDao {
 
     @Query("DELETE FROM pets WHERE id = :petId")
     suspend fun deleteById(petId: Long) // <-- Devuelve Unit (nada)
+
+    @Query("DELETE FROM pets WHERE ownerId = :ownerId")
+    suspend fun deleteByOwnerId(ownerId: Long)
 
     @Query("SELECT COUNT(*) FROM pets WHERE ownerId = :ownerId")
     suspend fun countByOwner(ownerId: Long): Int

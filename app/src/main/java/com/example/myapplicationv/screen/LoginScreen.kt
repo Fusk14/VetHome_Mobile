@@ -20,14 +20,16 @@ import com.example.myapplicationv.viewmodel.AuthViewModel
 @Composable
 fun LoginScreenVm(
     vm: AuthViewModel,
-    onLoginOkNavigateHome: () -> Unit,
+    onLoginOkNavigate: (Boolean) -> Unit, // (isAdmin)
     onGoRegister: () -> Unit
 ) {
     val state by vm.login.collectAsStateWithLifecycle()
+    val currentUser by vm.currentUser.collectAsStateWithLifecycle()
 
     if (state.success) {
         vm.clearLoginResult()
-        onLoginOkNavigateHome()
+        val isAdmin = currentUser.email == "admin@vethome.cl"
+        onLoginOkNavigate(isAdmin)
     }
 
     LoginScreen(

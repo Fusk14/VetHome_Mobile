@@ -24,6 +24,11 @@ import com.example.myapplicationv.screen.AppointmentsScreen
 import com.example.myapplicationv.screen.AddAppointmentScreen
 import com.example.myapplicationv.screen.PetDetailScreen
 import com.example.myapplicationv.screen.ProfileScreen
+import com.example.myapplicationv.screen.AdminDashboard
+import com.example.myapplicationv.screen.EditUserScreen
+import com.example.myapplicationv.screen.ResenasScreen
+import com.example.myapplicationv.screen.AddResenaScreen
+import com.example.myapplicationv.screen.ResenaDetailScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,9 +52,13 @@ fun AppNavGraph(
     val goCitas: () -> Unit = { navController.navigate(Route.Citas.path) }
     val goAddCita: () -> Unit = { navController.navigate(Route.AddCita.path) }
     val goBack: () -> Unit = { navController.popBackStack() }
-
-    // ✅ Nueva ruta al perfil
+    val goAdminDashboard: () -> Unit = { navController.navigate(Route.AdminDashboard.path) }
     val goProfile: () -> Unit = { navController.navigate(Route.Perfil.path) }
+
+    // ✅ ACTUALIZADO: Rutas para Reseñas
+    val goResenas: () -> Unit = { navController.navigate(Route.Resenas.path) }
+    val goAddResena: () -> Unit = { navController.navigate(Route.AddResena.path) }
+
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -71,16 +80,19 @@ fun AppNavGraph(
                         scope.launch { drawerState.close() }
                         if (isLoggedIn) goCitas() else goLogin()
                     },
+                    // ✅ ACTUALIZADO: Navegación a Reseñas en Drawer
+                    onResenas = {
+                        scope.launch { drawerState.close() }
+                        if (isLoggedIn) goResenas() else goLogin()
+                    },
                     onLogin = {
                         scope.launch { drawerState.close() }
                         if (!isLoggedIn) goLogin() else goHome()
                     },
-                    // ✅ Cambiado de onPerfil → onProfile
                     onProfile = {
                         scope.launch { drawerState.close() }
                         if (isLoggedIn) goProfile() else goLogin()
                     },
-                    // ✅ Nueva acción para Logout
                     onLogout = {
                         scope.launch {
                             drawerState.close()
@@ -104,10 +116,10 @@ fun AppNavGraph(
                     onHome = goHome,
                     onMascotas = goMascotas,
                     onCitas = goCitas,
+                    onResenas = goResenas, // ✅ NUEVO: Pasar la función goResenas al TopBar
                     onLogin = goLogin,
                     isUserLoggedIn = isLoggedIn,
                     userName = currentUser.name,
-                    // ✅ Nuevo parámetro para perfil
                     onProfile = { if (isLoggedIn) goProfile() else goLogin() }
                 )
             }
@@ -138,7 +150,13 @@ fun AppNavGraph(
                 composable(Route.Login.path) {
                     LoginScreenVm(
                         vm = authViewModel,
-                        onLoginOkNavigateHome = goHome,
+                        onLoginOkNavigate = { isAdmin ->
+                            if (isAdmin) {
+                                goAdminDashboard()
+                            } else {
+                                goHome()
+                            }
+                        },
                         onGoRegister = goRegister
                     )
                 }
@@ -149,6 +167,32 @@ fun AppNavGraph(
                         onRegisteredNavigateLogin = goBack,
                         onGoLogin = goBack
                     )
+                }
+
+                composable(Route.AdminDashboard.path) {
+                    if (isLoggedIn) {
+                        AdminDashboard(viewModel = authViewModel, navController = navController)
+                    } else {
+                        LaunchedEffect(Unit) { goLogin() }
+                    }
+                }
+
+                composable(
+                    route = Route.EditUser.path,
+                    arguments = listOf(navArgument("userId") { type = NavType.LongType })
+                ) { backStackEntry ->
+                    if (isLoggedIn) {
+                        val userId = backStackEntry.arguments?.getLong("userId")
+                        if (userId != null) {
+                            EditUserScreen(
+                                userId = userId,
+                                viewModel = authViewModel,
+                                onUserUpdated = goBack
+                            )
+                        }
+                    } else {
+                        LaunchedEffect(Unit) { goLogin() }
+                    }
                 }
 
                 composable(Route.Mascotas.path) {
@@ -220,13 +264,60 @@ fun AppNavGraph(
                     }
                 }
 
-                // ✅ NUEVA PANTALLA: PERFIL DE USUARIO
                 composable(Route.Perfil.path) {
                     if (isLoggedIn) {
                         ProfileScreen(
                             vm = authViewModel,
                             onBack = goBack
                         )
+                    } else {
+                        LaunchedEffect(Unit) { goLogin() }
+                    }
+                }
+
+                // 🆕 PANTALLA DE LISTADO DE RESEÑAS
+                composable(Route.Resenas.path) {
+                    if (isLoggedIn) {
+                        ResenasScreen(
+                            vm = authViewModel,
+                            onBack = goBack,
+                            onAddResena = goAddResena,
+                            onResenaDetail = { resenaId ->
+                                navController.navigate(Route.ResenaDetail.createRoute(resenaId))
+                            }
+                        )
+                    } else {
+                        LaunchedEffect(Unit) { goLogin() }
+                    }
+                }
+
+                // 🆕 PANTALLA PARA AGREGAR RESEÑA
+                composable(Route.AddResena.path) {
+                    if (isLoggedIn) {
+                        AddResenaScreen(
+                            vm = authViewModel,
+                            onBack = goBack,
+                            onResenaAdded = goBack
+                        )
+                    } else {
+                        LaunchedEffect(Unit) { goLogin() }
+                    }
+                }
+
+                // 🆕 PANTALLA DE DETALLE DE RESEÑA
+                composable(
+                    route = Route.ResenaDetail.path,
+                    arguments = listOf(navArgument("resenaId") { type = NavType.LongType })
+                ) { backStackEntry ->
+                    if (isLoggedIn) {
+                        val resenaId = backStackEntry.arguments?.getLong("resenaId")
+                        if (resenaId != null) {
+                            ResenaDetailScreen(
+                                vm = authViewModel,
+                                resenaId = resenaId,
+                                onBack = goBack
+                            )
+                        }
                     } else {
                         LaunchedEffect(Unit) { goLogin() }
                     }

@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.ExitToApp // Para Logout
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -47,13 +48,14 @@ fun AppDrawer(
     }
 }
 
+// En defaultDrawerItems, agregar el ítem de reseñas:
 @Composable
 fun defaultDrawerItems(
     onHome: () -> Unit,
     onMascotas: () -> Unit,
     onCitas: () -> Unit,
+    onResenas: () -> Unit, // ✅ NUEVO: Reseñas
     onLogin: () -> Unit,
-    // ✅ NUEVAS FUNCIONES PARA PERFIL Y LOGOUT
     onProfile: () -> Unit,
     onLogout: () -> Unit,
     isUserLoggedIn: Boolean = false
@@ -63,22 +65,17 @@ fun defaultDrawerItems(
     )
 
     if (isUserLoggedIn) {
-        // Ítems disponibles solo para usuarios logueados
-        baseItems.add(DrawerItem("Mi Perfil", Icons.Filled.Person, onProfile)) // ✅ Nuevo Ítem de Perfil
-        baseItems.add(DrawerItem("Mis Mascotas", Icons.Filled.Pets, onMascotas))
-        baseItems.add(DrawerItem("Mis Citas", Icons.Filled.Event, onCitas))
-
-        // Separador visual antes de Logout
-        baseItems.add(DrawerItem("", Icons.Filled.Person) {}) // Placeholder o Divider
-
-        baseItems.add(DrawerItem("Cerrar Sesión", Icons.Filled.ExitToApp, onLogout))
+        baseItems.apply {
+            add(DrawerItem("Mi Perfil", Icons.Filled.Person, onProfile))
+            add(DrawerItem("Mis Mascotas", Icons.Filled.Pets, onMascotas))
+            add(DrawerItem("Mis Citas", Icons.Filled.Event, onCitas))
+            add(DrawerItem("Mis Reseñas", Icons.Filled.Star, onResenas)) // ✅ NUEVO
+            add(DrawerItem("", Icons.Filled.Person) {}) // Separador
+            add(DrawerItem("Cerrar Sesión", Icons.Filled.ExitToApp, onLogout))
+        }
     } else {
-        // Ítem de Login para usuarios no logueados
         baseItems.add(DrawerItem("Login", Icons.Filled.Person, onLogin))
     }
-
-    // Nota: El placeholder para el Divider se puede mejorar usando un ítem nulo y un if en AppDrawer.
-    // Aquí se muestra una versión simple.
 
     return baseItems
 }

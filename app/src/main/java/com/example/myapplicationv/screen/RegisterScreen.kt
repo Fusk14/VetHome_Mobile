@@ -30,14 +30,29 @@ fun RegisterScreenVm(
     onGoLogin: () -> Unit
 ) {
     val state by vm.register.collectAsStateWithLifecycle()
+    // ✅ NUEVO: Recolectar el estado de éxito del registro
+    val showSuccess by vm.showRegistrationSuccess.collectAsStateWithLifecycle()
 
-    if (state.success) {
-        LaunchedEffect(state.success) {
-            vm.clearRegisterResult()
-            onRegisteredNavigateLogin()
-        }
+    // ✅ NUEVO: Manejar éxito del registro con AlertDialog
+    if (showSuccess) {
+        AlertDialog(
+            onDismissRequest = { vm.hideRegistrationSuccess() },
+            title = { Text("¡Registro Exitoso!") },
+            text = { Text("Tu cuenta ha sido creada correctamente. Ahora puedes iniciar sesión.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.hideRegistrationSuccess()
+                        onRegisteredNavigateLogin()
+                    }
+                ) {
+                    Text("Aceptar")
+                }
+            }
+        )
     }
 
+    // El formulario ya estará limpio porque clearRegistrationForm() se ejecutó en el ViewModel
     RegisterScreen(
         name = state.name,
         email = state.email,

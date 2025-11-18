@@ -7,6 +7,8 @@ import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.MoreVert
+// 🆕 Importar ícono de estrella para reseñas
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.text.style.TextOverflow
@@ -19,10 +21,10 @@ fun AppTopBar(
     onHome: () -> Unit,
     onMascotas: () -> Unit,
     onCitas: () -> Unit,
+    onResenas: () -> Unit, // ✅ NUEVO: Agregar el parámetro onResenas
     onLogin: () -> Unit,
     isUserLoggedIn: Boolean = false,
     userName: String = "",
-    // ✅ Nuevo parámetro aceptado (valor por defecto)
     onProfile: () -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -64,6 +66,11 @@ fun AppTopBar(
                 Icon(Icons.Filled.Event, contentDescription = "Citas")
             }
 
+            // ✅ NUEVO: Ícono de Reseñas en la barra principal
+            IconButton(onClick = onResenas) {
+                Icon(Icons.Filled.Star, contentDescription = "Reseñas")
+            }
+
             // Mostrar icono de persona si está logueado -> abre perfil
             if (isUserLoggedIn) {
                 IconButton(onClick = onProfile) {
@@ -96,6 +103,12 @@ fun AppTopBar(
                     text = { Text("Mis Citas") },
                     onClick = { showMenu = false; onCitas() }
                 )
+                // ✅ NUEVO: Opción de Reseñas en el menú
+                DropdownMenuItem(
+                    text = { Text("Mis Reseñas") },
+                    onClick = { showMenu = false; onResenas() }
+                )
+
                 // Mostrar login solo si no está logueado
                 if (!isUserLoggedIn) {
                     DropdownMenuItem(
