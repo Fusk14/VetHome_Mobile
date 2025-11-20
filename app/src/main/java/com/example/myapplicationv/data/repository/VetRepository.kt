@@ -338,17 +338,18 @@ class VetRepository(
                 date
             }
 
-            // ENTIDAD CORRECTA — SIN reason
+            // ENTIDAD CORRECTA — con motivo y reason sincronizados
             val entity = AppointmentEntity(
                 id = creada.id ?: 0L,
                 idMascota = creada.idMascota,
                 idVeterinario = creada.idVeterinario,
                 idCliente = creada.idCliente,
                 fecha = creada.fecha,          // string desde backend
-                motivo = creada.motivo,        // motivo correcto
+                motivo = creada.motivo,        // motivo desde backend
                 diagnostico = creada.diagnostico,
                 tratamiento = creada.tratamiento,
-                date = fechaDate               // date convertido
+                date = fechaDate,              // date convertido
+                reason = creada.motivo         // sincronizar reason con motivo
             )
 
             appointmentDao.insert(entity)
@@ -356,7 +357,7 @@ class VetRepository(
 
         } catch (_: Exception) {
 
-            // GUARDADO OFFLINE — SIN reason
+            // GUARDADO OFFLINE — con motivo y reason sincronizados
             val localId = appointmentDao.insert(
                 AppointmentEntity(
                     idCliente = ownerId,
@@ -364,6 +365,7 @@ class VetRepository(
                     idVeterinario = ownerId,
                     fecha = fechaStr,
                     motivo = reason,
+                    reason = reason,  // sincronizar reason con motivo
                     date = date
                 )
             )

@@ -190,7 +190,7 @@ private fun AppointmentCard(appointment: AppointmentEntity, petName: String) {
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Motivo: ${appointment.reason}",
+                    text = "Motivo: ${appointment.motivo ?: appointment.reason ?: "Sin motivo"}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
