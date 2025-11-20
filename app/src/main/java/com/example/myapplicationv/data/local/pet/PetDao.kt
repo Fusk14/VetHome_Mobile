@@ -9,15 +9,15 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface PetDao {
 
-    @Insert(onConflict = OnConflictStrategy.ABORT)
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(pet: PetEntity): Long
 
     @Query("SELECT * FROM pets")
     fun getAllPets(): Flow<List<PetEntity>>
 
-    @Query("SELECT * FROM pets WHERE ownerId = :ownerId")
-    fun getPetByOwnerId(ownerId: Long): Flow<List<PetEntity>>
-
+    // ownerId → idCliente
+    @Query("SELECT * FROM pets WHERE idCliente = :clienteId")
+    fun getPetByOwnerId(clienteId: Long): Flow<List<PetEntity>>
 
     @Query("SELECT * FROM pets WHERE id = :petId LIMIT 1")
     suspend fun getById(petId: Long): PetEntity?
@@ -26,11 +26,12 @@ interface PetDao {
     suspend fun updateWeight(petId: Long, nuevoPeso: Double)
 
     @Query("DELETE FROM pets WHERE id = :petId")
-    suspend fun deleteById(petId: Long) // <-- Devuelve Unit (nada)
+    suspend fun deleteById(petId: Long)
 
-    @Query("DELETE FROM pets WHERE ownerId = :ownerId")
-    suspend fun deleteByOwnerId(ownerId: Long)
+    // ownerId → idCliente
+    @Query("DELETE FROM pets WHERE idCliente = :clienteId")
+    suspend fun deleteByOwnerId(clienteId: Long)
 
-    @Query("SELECT COUNT(*) FROM pets WHERE ownerId = :ownerId")
-    suspend fun countByOwner(ownerId: Long): Int
+    @Query("SELECT COUNT(*) FROM pets WHERE idCliente = :clienteId")
+    suspend fun countByOwner(clienteId: Long): Int
 }

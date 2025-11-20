@@ -10,26 +10,21 @@ import androidx.room.ForeignKey
         ForeignKey(
             entity = com.example.myapplicationv.data.local.user.ClientEntity::class,
             parentColumns = ["id"],
-            childColumns = ["usuarioId"],
-            onDelete = ForeignKey.CASCADE
-        ),
-        ForeignKey(
-            entity = com.example.myapplicationv.data.local.pet.PetEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["mascotaId"],
+            childColumns = ["idCliente"],
             onDelete = ForeignKey.CASCADE
         )
     ]
 )
 data class ResenaEntity(
-    @PrimaryKey(autoGenerate = true)
+    @PrimaryKey(autoGenerate = false)
     val id: Long = 0L,
-    val usuarioId: Long,
-    val mascotaId: Long,
-    val mascotaNombre: String,
-    val calificacion: Int, // 1-5 estrellas
+    val idCliente: Long,
+    val idVeterinario: Long,
+    val calificacion: Int,
     val comentario: String,
-    val fecha: String, // Formato: "2024-01-15"
-    val sincronizado: Boolean = false, // Para sincronización con backend
+    val mascotaId: Long? = null,
+    val mascotaNombre: String? = null,
+    val fecha: String? = null,
+    val sincronizado: Boolean = false,
     val createdAt: Long = System.currentTimeMillis()
 )

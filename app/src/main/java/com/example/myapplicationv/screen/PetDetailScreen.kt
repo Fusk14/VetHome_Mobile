@@ -213,9 +213,9 @@ fun PetDetailScreen(
 }
 
 @Composable
-fun InfoRow(label: String, value: String) {
+fun InfoRow(label: String, value: String?) {
     Row(modifier = Modifier.fillMaxWidth()) {
         Text(label, fontWeight = FontWeight.Bold, modifier = Modifier.width(150.dp))
-        Text(value)
+        Text(value ?: "No especificado")
     }
 }

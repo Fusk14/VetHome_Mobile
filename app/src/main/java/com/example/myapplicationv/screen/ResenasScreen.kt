@@ -160,13 +160,13 @@ fun ResenaItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = resena.mascotaNombre,
+                    text = resena.mascotaNombre ?: "Mascota sin nombre",
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = resena.fecha,
+                    text = resena.fecha ?: "Fecha no disponible",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

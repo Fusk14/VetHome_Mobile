@@ -1,23 +1,37 @@
 package com.example.myapplicationv.data.repository
 
+import java.time.LocalDate
+import java.time.Period
+
 import com.example.myapplicationv.data.local.appointment.AppointmentDao
 import com.example.myapplicationv.data.local.appointment.AppointmentEntity
 import com.example.myapplicationv.data.local.user.ClientDao
 import com.example.myapplicationv.data.local.user.ClientEntity
 import com.example.myapplicationv.data.local.pet.PetDao
 import com.example.myapplicationv.data.local.pet.PetEntity
-// 🆕 Importaciones necesarias para reseñas
 import com.example.myapplicationv.data.local.resena.ResenaDao
 import com.example.myapplicationv.data.local.resena.ResenaEntity
-import com.example.myapplicationv.domain.validation.* import kotlinx.coroutines.flow.Flow
+import com.example.myapplicationv.data.remote.RemoteModule
+import com.example.myapplicationv.data.remote.*
+import com.example.myapplicationv.data.remote.dto.*
+import com.example.myapplicationv.domain.validation.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import java.util.Date
 
 class VetRepository(
     private val clientDao: ClientDao,
     private val petDao: PetDao,
     private val appointmentDao: AppointmentDao,
-    private val resenaDao: ResenaDao // ✅ NUEVO: Agregar el DAO de reseñas
+    private val resenaDao: ResenaDao
 ) {
+
+    private val usuarioApi = RemoteModule.usuarioApi
+    private val mascotaApi = RemoteModule.mascotaApi
+    private val consultaApi = RemoteModule.consultaApi
+    private val resenaApi = RemoteModule.resenaApi
+
+
     // ─────────────────────────────────────────────
     // 🟢 LOGIN, REGISTRO Y ADMIN
     // ─────────────────────────────────────────────
@@ -27,12 +41,41 @@ class VetRepository(
         if (emailError != null)
             return Result.failure(IllegalArgumentException(emailError))
 
-        val client = clientDao.getByEmail(email)
+        return try {
+            val localClient = clientDao.getByEmail(email)
+                ?: return Result.failure(IllegalArgumentException("Usuario no encontrado. Por favor regístrese primero."))
 
-        return if (client != null && client.password == password) {
-            Result.success(client)
-        } else {
-            Result.failure(IllegalArgumentException("Credenciales inválidas"))
+            val loginRequest = LoginRequestDto(
+                correo = email,
+                contrasena = password
+            )
+
+            usuarioApi.login(loginRequest)
+
+            val usuarioDto = usuarioApi.getUsuarioByCorreo(email)
+
+            val clientEntity = ClientEntity(
+                id = usuarioDto.id ?: 0L,
+                rut = usuarioDto.rut,
+                nombre = usuarioDto.nombre,
+                apellido = usuarioDto.apellido,
+                correo = usuarioDto.correo,
+                telefono = usuarioDto.telefono,
+                contrasena = password,
+                rolNombre = usuarioDto.rol?.nombre ?: "CLIENTE",
+                address = localClient.address,
+                emergencyContact = localClient.emergencyContact
+            )
+
+            clientDao.insert(clientEntity)
+            Result.success(clientEntity)
+
+        } catch (e: Exception) {
+            val client = clientDao.getByEmail(email)
+            if (client != null && client.password == password)
+                Result.success(client)
+            else
+                Result.failure(IllegalArgumentException("Error de conexión: ${e.message}"))
         }
     }
 
@@ -44,6 +87,7 @@ class VetRepository(
         emergencyContact: String? = null,
         password: String
     ): Result<Long> {
+
         val nameError = validateNameLettersOnly(name)
         val emailError = validateEmail(email)
         val phoneError = validatePhoneDigitsOnly(phone)
@@ -51,26 +95,50 @@ class VetRepository(
         val emergencyContactError = validateEmergencyContact(emergencyContact ?: "")
         val passwordError = validateStrongPassword(password)
 
-        val errors = listOf(nameError, emailError, phoneError, addressError, emergencyContactError, passwordError)
-        val firstError = errors.firstOrNull { it != null }
+        val firstError = listOf(nameError, emailError, phoneError, addressError, emergencyContactError, passwordError)
+            .firstOrNull { it != null }
+
         if (firstError != null)
             return Result.failure(IllegalArgumentException(firstError))
 
-        val exists = clientDao.getByEmail(email) != null
-        if (exists)
-            return Result.failure(IllegalStateException("El correo ya está registrado"))
+        return try {
+            val (nombre, apellido) = name.trim().split(" ", limit = 2).let {
+                it[0] to it.getOrNull(1).orEmpty()
+            }
 
-        val id = clientDao.insert(
-            ClientEntity(
-                name = name,
-                email = email,
-                phone = phone,
-                address = address,
-                emergencyContact = emergencyContact,
-                password = password
+            val rut = email.substringBefore("@")
+
+            val registerRequest = RegisterRequestDto(
+                rut = rut,
+                nombre = nombre,
+                apellido = apellido,
+                correo = email,
+                telefono = phone,
+                contrasena = password,
+                rolNombre = "CLIENTE"
             )
-        )
-        return Result.success(id)
+
+            val usuarioDto = usuarioApi.register(registerRequest)
+
+            val clientEntity = ClientEntity(
+                id = usuarioDto.id ?: 0L,
+                rut = usuarioDto.rut,
+                nombre = usuarioDto.nombre,
+                apellido = usuarioDto.apellido,
+                correo = usuarioDto.correo,
+                telefono = usuarioDto.telefono,
+                contrasena = password,
+                rolNombre = usuarioDto.rol?.nombre ?: "CLIENTE",
+                address = address,
+                emergencyContact = emergencyContact
+            )
+
+            clientDao.insert(clientEntity)
+            Result.success(clientEntity.id)
+
+        } catch (e: Exception) {
+            Result.failure(IllegalStateException("Error de conexión: ${e.message}"))
+        }
     }
 
     suspend fun isAdmin(clientId: Long): Boolean {
@@ -78,22 +146,13 @@ class VetRepository(
         return client?.role == "admin"
     }
 
-    fun getAllClients(): Flow<List<ClientEntity>> {
-        return clientDao.getAllClients()
-    }
+    fun getAllClients(): Flow<List<ClientEntity>> = clientDao.getAllClients()
 
-    // ─────────────────────────────────────────────
-    // 🟢 CLIENTE: Obtener y actualizar información
-    // ─────────────────────────────────────────────
-
-    suspend fun getClientById(clientId: Long): ClientEntity? {
-        return clientDao.getById(clientId)
-    }
+    suspend fun getClientById(clientId: Long): ClientEntity? = clientDao.getById(clientId)
 
     suspend fun deleteUserAndData(clientId: Long) {
         appointmentDao.deleteByOwnerId(clientId)
         petDao.deleteByOwnerId(clientId)
-        // TODO: resenaDao.deleteByUserId(clientId) // Si existe esta función
         clientDao.deleteById(clientId)
     }
 
@@ -104,6 +163,7 @@ class VetRepository(
         address: String?,
         emergencyContact: String?
     ): Result<Unit> {
+
         val nameError = validateNameLettersOnly(name)
         val phoneError = validatePhoneDigitsOnly(phone)
         val addressError = validateAddress(address ?: "")
@@ -132,90 +192,114 @@ class VetRepository(
     // 🟣 MASCOTAS
     // ─────────────────────────────────────────────
 
-    fun getAllPets(): Flow<List<PetEntity>> {
-        return petDao.getAllPets()
-    }
+    fun getAllPets(): Flow<List<PetEntity>> = petDao.getAllPets()
 
-    suspend fun getPetById(petId: Long): PetEntity? {
-        return petDao.getById(petId)
-    }
+    suspend fun getPetById(petId: Long): PetEntity? = petDao.getById(petId)
 
     suspend fun addPet(
         ownerId: Long,
         nombre: String,
         especie: String,
         raza: String,
-        fechaNacimiento: String? = null,
-        peso: Double? = null,
-        color: String? = null,
-        notasMedicas: String? = null
+        fechaNacimiento: String?,
+        peso: Double?,
+        color: String?,
+        notasMedicas: String?
     ): Result<Long> {
+
         val nombreError = validatePetName(nombre)
         val especieError = validateSpecies(especie)
         val razaError = validateBreed(raza)
-        val fechaError = if (!fechaNacimiento.isNullOrBlank()) validateBirthDate(fechaNacimiento) else null
-        val pesoError = if (peso != null) validateWeight(peso.toString()) else null
-        val colorError = if (!color.isNullOrBlank()) validateColor(color) else null
-        val notasError = if (!notasMedicas.isNullOrBlank()) validateMedicalNotes(notasMedicas) else null
+        val fechaError = fechaNacimiento?.let { validateBirthDate(it) }
+        val pesoError = peso?.let { validateWeight(it.toString()) }
+        val colorError = color?.let { validateColor(it) }
+        val notasError = notasMedicas?.let { validateMedicalNotes(it) }
 
-        val errors = listOf(nombreError, especieError, razaError, fechaError, pesoError, colorError, notasError)
-        val firstError = errors.firstOrNull { it != null }
+        val firstError = listOf(nombreError, especieError, razaError, fechaError, pesoError, colorError, notasError)
+            .firstOrNull { it != null }
+
         if (firstError != null)
             return Result.failure(IllegalArgumentException(firstError))
 
         val owner = clientDao.getById(ownerId)
-        if (owner == null)
-            return Result.failure(IllegalArgumentException("Cliente no encontrado"))
+            ?: return Result.failure(IllegalArgumentException("Cliente no encontrado"))
 
-        val petId = petDao.insert(
-            PetEntity(
-                ownerId = ownerId,
+        val edad = fechaNacimiento?.let {
+            try {
+                val birth = java.time.LocalDate.parse(it)
+                java.time.Period.between(birth, java.time.LocalDate.now()).years
+            } catch (_: Exception) {
+                0
+            }
+        } ?: 0
+
+        return try {
+            val mascotaDto = MascotaDto(
+                idCliente = ownerId,
                 nombre = nombre,
                 especie = especie,
                 raza = raza,
+                edad = edad
+            )
+
+            val creado = mascotaApi.createMascota(mascotaDto)
+
+            val petEntity = PetEntity(
+                id = creado.id ?: 0L,
+                idCliente = creado.idCliente,
+                nombre = creado.nombre,
+                especie = creado.especie,
+                raza = creado.raza,
+                edad = creado.edad,
                 fechaNacimiento = fechaNacimiento,
                 peso = peso,
                 color = color,
                 notasMedicas = notasMedicas
             )
-        )
-        return Result.success(petId)
+
+            petDao.insert(petEntity)
+            Result.success(petEntity.id)
+
+        } catch (_: Exception) {
+            val localId = petDao.insert(
+                PetEntity(
+                    idCliente = ownerId,
+                    nombre = nombre,
+                    especie = especie,
+                    raza = raza,
+                    edad = edad,
+                    fechaNacimiento = fechaNacimiento,
+                    peso = peso,
+                    color = color,
+                    notasMedicas = notasMedicas
+                )
+            )
+            Result.success(localId)
+        }
     }
 
-    fun getPetsByOwner(ownerId: Long): Flow<List<PetEntity>> {
-        return petDao.getPetByOwnerId(ownerId)
-    }
+    fun getPetsByOwner(ownerId: Long): Flow<List<PetEntity>> = petDao.getPetByOwnerId(ownerId)
 
     suspend fun updatePetWeight(petId: Long, nuevoPeso: Double) {
-        val pesoError = validateWeight(nuevoPeso.toString())
-        if (pesoError != null)
-            throw IllegalArgumentException(pesoError)
+        val err = validateWeight(nuevoPeso.toString())
+        if (err != null) throw IllegalArgumentException(err)
         petDao.updateWeight(petId, nuevoPeso)
     }
 
-    suspend fun deletePet(petId: Long) {
-        petDao.deleteById(petId)
-    }
+    suspend fun deletePet(petId: Long) = petDao.deleteById(petId)
 
-    suspend fun getPetCountByOwner(ownerId: Long): Int {
-        return petDao.countByOwner(ownerId)
-    }
+    suspend fun getPetCountByOwner(ownerId: Long): Int = petDao.countByOwner(ownerId)
 
     // ─────────────────────────────────────────────
-    // 🟡 CITAS (Appointments)
+    // 🟡 CITAS
     // ─────────────────────────────────────────────
 
-    fun getAllAppointments(): Flow<List<AppointmentEntity>> {
-        return appointmentDao.getAllAppointments()
-    }
+    fun getAllAppointments(): Flow<List<AppointmentEntity>> = appointmentDao.getAllAppointments()
 
-    fun getAppointmentsByOwner(ownerId: Long): Flow<List<AppointmentEntity>> {
-        return appointmentDao.getAppointmentsByOwner(ownerId)
-    }
+    fun getAppointmentsByOwner(ownerId: Long): Flow<List<AppointmentEntity>> = appointmentDao.getAppointmentsByOwner(ownerId)
 
-    suspend fun deleteAppointmentById(appointmentId: Long) {
+    suspend fun deleteAppointmentById(appointmentId: Long) =
         appointmentDao.deleteAppointmentById(appointmentId)
-    }
 
     suspend fun addAppointment(
         ownerId: Long,
@@ -223,20 +307,71 @@ class VetRepository(
         date: Date,
         reason: String
     ): Result<Long> {
-        val owner = clientDao.getById(ownerId)
-        if (owner == null)
-            return Result.failure(IllegalArgumentException("Cliente no encontrado"))
 
-        val appointmentId = appointmentDao.insert(
-            AppointmentEntity(
-                ownerId = ownerId,
-                petId = petId,
-                date = date,
-                reason = reason
+        val owner = clientDao.getById(ownerId)
+            ?: return Result.failure(IllegalArgumentException("Cliente no encontrado"))
+
+        // Convertir Date → "yyyy-MM-dd"
+        val fechaStr = java.time.Instant.ofEpochMilli(date.time)
+            .atZone(java.time.ZoneId.systemDefault())
+            .toLocalDate()
+            .toString()
+
+        return try {
+            // DTO para API
+            val consultaDto = ConsultaDto(
+                idMascota = petId,
+                idVeterinario = ownerId,
+                idCliente = ownerId,
+                fecha = fechaStr,
+                motivo = reason
             )
-        )
-        return Result.success(appointmentId)
+
+            val creada = consultaApi.createConsulta(consultaDto)
+
+            // Convertir fecha STRING → Date
+            val fechaDate = try {
+                java.time.LocalDate.parse(creada.fecha).let {
+                    Date.from(it.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant())
+                }
+            } catch (_: Exception) {
+                date
+            }
+
+            // ENTIDAD CORRECTA — SIN reason
+            val entity = AppointmentEntity(
+                id = creada.id ?: 0L,
+                idMascota = creada.idMascota,
+                idVeterinario = creada.idVeterinario,
+                idCliente = creada.idCliente,
+                fecha = creada.fecha,          // string desde backend
+                motivo = creada.motivo,        // motivo correcto
+                diagnostico = creada.diagnostico,
+                tratamiento = creada.tratamiento,
+                date = fechaDate               // date convertido
+            )
+
+            appointmentDao.insert(entity)
+            Result.success(entity.id)
+
+        } catch (_: Exception) {
+
+            // GUARDADO OFFLINE — SIN reason
+            val localId = appointmentDao.insert(
+                AppointmentEntity(
+                    idCliente = ownerId,
+                    idMascota = petId,
+                    idVeterinario = ownerId,
+                    fecha = fechaStr,
+                    motivo = reason,
+                    date = date
+                )
+            )
+
+            Result.success(localId)
+        }
     }
+
 
     // ─────────────────────────────────────────────
     // ⭐ RESEÑAS
@@ -248,25 +383,47 @@ class VetRepository(
         mascotaNombre: String,
         calificacion: Int,
         comentario: String,
-        fecha: String // Nota: Idealmente se usaría un objeto Date o Instant
+        fecha: String
     ): Result<Long> {
-        // Validaciones
-        if (calificacion < 1 || calificacion > 5) {
+
+        if (calificacion !in 1..5)
             return Result.failure(IllegalArgumentException("La calificación debe ser entre 1 y 5"))
-        }
 
-        if (comentario.isBlank()) {
+        if (comentario.isBlank())
             return Result.failure(IllegalArgumentException("El comentario no puede estar vacío"))
-        }
 
-        if (comentario.length > 500) {
+        if (comentario.length > 500)
             return Result.failure(IllegalArgumentException("El comentario es demasiado largo"))
-        }
 
-        try {
-            val resenaId = resenaDao.insertar(
+        return try {
+            val dto = ResenaDto(
+                idCliente = usuarioId,
+                idVeterinario = usuarioId,
+                calificacion = calificacion,
+                comentario = comentario
+            )
+
+            val creada = resenaApi.createResena(dto)
+
+            val entity = ResenaEntity(
+                id = creada.id ?: 0L,
+                idCliente = creada.idCliente,
+                idVeterinario = creada.idVeterinario,
+                calificacion = creada.calificacion,
+                comentario = creada.comentario,
+                mascotaId = mascotaId,
+                mascotaNombre = mascotaNombre,
+                fecha = fecha
+            )
+
+            resenaDao.insertar(entity)
+            Result.success(entity.id)
+
+        } catch (_: Exception) {
+            val localId = resenaDao.insertar(
                 ResenaEntity(
-                    usuarioId = usuarioId,
+                    idCliente = usuarioId,
+                    idVeterinario = usuarioId,
                     mascotaId = mascotaId,
                     mascotaNombre = mascotaNombre,
                     calificacion = calificacion,
@@ -274,25 +431,19 @@ class VetRepository(
                     fecha = fecha
                 )
             )
-            return Result.success(resenaId)
-        } catch (e: Exception) {
-            return Result.failure(e)
+            Result.success(localId)
         }
     }
 
-    fun obtenerResenasPorUsuario(usuarioId: Long): Flow<List<ResenaEntity>> {
-        return resenaDao.obtenerPorUsuario(usuarioId)
-    }
+    fun obtenerResenasPorUsuario(usuarioId: Long): Flow<List<ResenaEntity>> =
+        resenaDao.obtenerPorUsuario(usuarioId)
 
-    suspend fun obtenerResenaPorId(id: Long): ResenaEntity? {
-        return resenaDao.obtenerPorId(id)
-    }
+    suspend fun obtenerResenaPorId(id: Long): ResenaEntity? =
+        resenaDao.obtenerPorId(id)
 
-    suspend fun eliminarResena(id: Long) {
+    suspend fun eliminarResena(id: Long) =
         resenaDao.eliminarPorId(id)
-    }
 
-    suspend fun obtenerPromedioCalificacionMascota(mascotaId: Long): Double? {
-        return resenaDao.obtenerPromedioCalificacion(mascotaId)
-    }
+    suspend fun obtenerPromedioCalificacionMascota(mascotaId: Long): Double? =
+        resenaDao.obtenerPromedioCalificacion(mascotaId)
 }

@@ -49,8 +49,8 @@ fun EditPetScreen(
         selectedPetState.pet?.let { pet ->
             if (!isDataLoaded) {
                 name = pet.nombre
-                species = pet.especie
-                breed = pet.raza
+                species = pet.especie ?: ""
+                breed = pet.raza ?: ""
                 birthDate = pet.fechaNacimiento ?: ""
                 weight = pet.peso?.toString() ?: ""
                 color = pet.color ?: ""
