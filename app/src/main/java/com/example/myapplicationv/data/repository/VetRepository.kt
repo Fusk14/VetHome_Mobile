@@ -32,9 +32,7 @@ class VetRepository(
     private val resenaApi = RemoteModule.resenaApi
 
 
-    // ─────────────────────────────────────────────
-    // 🟢 LOGIN, REGISTRO Y ADMIN
-    // ─────────────────────────────────────────────
+    //login, registro, admin
 
     suspend fun login(email: String, password: String): Result<ClientEntity> {
         val emailError = validateEmail(email)
@@ -188,9 +186,7 @@ class VetRepository(
         return Result.success(Unit)
     }
 
-    // ─────────────────────────────────────────────
-    // 🟣 MASCOTAS
-    // ─────────────────────────────────────────────
+    //mascotas
 
     fun getAllPets(): Flow<List<PetEntity>> = petDao.getAllPets()
 
@@ -290,10 +286,8 @@ class VetRepository(
 
     suspend fun getPetCountByOwner(ownerId: Long): Int = petDao.countByOwner(ownerId)
 
-    // ─────────────────────────────────────────────
-    // 🟡 CITAS
-    // ─────────────────────────────────────────────
 
+    //consultas/appointments
     fun getAllAppointments(): Flow<List<AppointmentEntity>> = appointmentDao.getAllAppointments()
 
     fun getAppointmentsByOwner(ownerId: Long): Flow<List<AppointmentEntity>> = appointmentDao.getAppointmentsByOwner(ownerId)
@@ -375,9 +369,7 @@ class VetRepository(
     }
 
 
-    // ─────────────────────────────────────────────
-    // ⭐ RESEÑAS
-    // ─────────────────────────────────────────────
+    //reseñas
 
     suspend fun crearResena(
         usuarioId: Long,

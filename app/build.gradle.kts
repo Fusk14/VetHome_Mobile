@@ -89,12 +89,27 @@ dependencies {
     // 🔥 DESUGARING — NECESARIO PARA LocalDate, Period, Instant, etc.
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 
-    // ===== TESTING =====
+    //librerias de test locales
     testImplementation(libs.junit)
+    testImplementation("io.mockk:mockk:1.13.12")
+    testImplementation("org.robolectric:robolectric:4.13")
+    //Test de implementacion de UI
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    //reglas adicionales
+    androidTestImplementation("androidx.test:core-ktx:1.5.0")
+    androidTestImplementation("androidx.test:rules:1.5.0")
+    // FALTANTES PARA CORRUTINAS EN TEST
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+
+    // FALTANTES PARA ARCHITECTURE COMPONENTS TEST
+    testImplementation("androidx.arch.core:core-testing:2.2.0")
+
+    // FALTANTES PARA VIEWMODEL Y LIVE DATA TEST
+    testImplementation("androidx.test.ext:junit-ktx:1.1.5")
+
+    // FALTANTES PARA ROBOELECTRIC MÁS RECIENTE (opcional pero recomendado)
+    testImplementation("org.robolectric:robolectric:4.11.1")
 }

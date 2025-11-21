@@ -27,5 +27,4 @@ data class PetEntity(
     val color: String? = null,
     val notasMedicas: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-
 )
