@@ -17,7 +17,7 @@ import com.example.myapplicationv.data.repository.VetRepository
 import com.example.myapplicationv.navigation.AppNavGraph
 import com.example.myapplicationv.ui.theme.VetHomeTheme
 import com.example.myapplicationv.viewmodel.AuthViewModel
-import com.example.myapplicationv.viewmodel.AuthViewModelFactory
+import com.example.myapplicationv.viewmodel.ViewModelFactory
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,7 +54,7 @@ fun VetHomeApp() {
             }
 
             val viewModelFactory = remember {
-                AuthViewModelFactory(vetRepository, userPreferences)
+                ViewModelFactory(vetRepository, userPreferences)
             }
 
             val authViewModel: AuthViewModel = viewModel(factory = viewModelFactory)

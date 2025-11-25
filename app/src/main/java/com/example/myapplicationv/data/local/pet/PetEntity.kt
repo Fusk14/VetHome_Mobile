@@ -9,21 +9,22 @@ import androidx.room.ForeignKey
     foreignKeys = [ForeignKey(
         entity = com.example.myapplicationv.data.local.user.ClientEntity::class,
         parentColumns = ["id"],
-        childColumns = ["ownerId"],
+        childColumns = ["idCliente"],
         onDelete = ForeignKey.CASCADE
     )]
 )
 data class PetEntity(
-    @PrimaryKey(autoGenerate = true)
+    @PrimaryKey(autoGenerate = false) // Los IDs vienen del microservicio
     val id: Long = 0L,
-
-    val ownerId: Long,
+    val idCliente: Long, // Cambiado de ownerId para coincidir con microservicio
     val nombre: String,
-    val especie: String,
-    val raza: String,
+    val especie: String? = null, // Ahora nullable como en el microservicio
+    val raza: String? = null, // Ahora nullable como en el microservicio
+    val edad: Int = 0, // Nuevo campo del microservicio
+    // Campos adicionales para compatibilidad local (no están en el microservicio)
     val fechaNacimiento: String? = null,
     val peso: Double? = null,
     val color: String? = null,
     val notasMedicas: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
 )

@@ -322,9 +322,13 @@ class AuthViewModel(
         }
     }
 
+    // En viewmodel/AuthViewModel.kt
+
     fun isCurrentUserAdmin(): Boolean {
-        return _userRole.value == "admin"
+        val role = _userRole.value.uppercase() // Normalizamos a mayúsculas
+        return role == "ADMIN" || role == "ADMINISTRATIVO" || role == "ROLE_ADMIN"
     }
+
 
     // --------------------------------------------------------------------------------------
     // --- LÓGICA DE PERFIL ---

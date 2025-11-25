@@ -1,4 +1,4 @@
-package com.example.myapplicationv.data.local.database // Asegúrate de que el paquete sea correcto
+package com.example.myapplicationv.data.local.database
 
 import android.content.Context
 import androidx.room.Database
@@ -8,32 +8,27 @@ import androidx.room.TypeConverters
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.myapplicationv.data.local.appointment.AppointmentDao
 import com.example.myapplicationv.data.local.appointment.AppointmentEntity
-import com.example.myapplicationv.data.local.appointment.Converters // Suponiendo que Converters está en 'appointment'
 import com.example.myapplicationv.data.local.user.ClientDao
 import com.example.myapplicationv.data.local.user.ClientEntity
 import com.example.myapplicationv.data.local.pet.PetDao
 import com.example.myapplicationv.data.local.pet.PetEntity
-import com.example.myapplicationv.data.local.resena.ResenaDao // 🆕 Suponiendo que ResenaDao está aquí
-import com.example.myapplicationv.data.local.resena.ResenaEntity // 🆕 Suponiendo que ResenaEntity está aquí
+import com.example.myapplicationv.data.local.resena.ResenaDao
+import com.example.myapplicationv.data.local.resena.ResenaEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import com.example.myapplicationv.data.local.appointment.Converters
 
-/**
- * DATABASE EXPLICACIÓN:
- * - @Database: Define la base de datos Room
- * - entities: Lista de TODAS las tablas que tendrá la base de datos
- * - version: Número de versión del esquema (incrementar cuando hagas cambios)
- */
+
 @Database(
     entities = [
         ClientEntity::class,
         PetEntity::class,
         AppointmentEntity::class,
-        ResenaEntity::class // ✅ NUEVO: Agregar ResenaEntity
+        ResenaEntity::class
     ],
-    version = 5, // ✅ Versión incrementada (de 4 a 5)
+    version = 5,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -42,27 +37,36 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun clientDao(): ClientDao
     abstract fun petDao(): PetDao
     abstract fun appointmentDao(): AppointmentDao
-    abstract fun resenaDao(): ResenaDao // ✅ NUEVO: Agregar el DAO para Reseñas
+    abstract fun resenaDao(): ResenaDao
 
     companion object {
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
-        private const val DB_NAME = "vet_home.db"
 
-        // Scope para la precarga, usar un scope apropiado (Hilt/Koin) es mejor,
-        // pero para este ejemplo usaremos un CoroutineScope básico.
-        private val ApplicationScope = CoroutineScope(Dispatchers.IO)
+        private const val DB_NAME = "vet_home.db"
+        private val applicationScope = CoroutineScope(Dispatchers.IO)
 
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
+
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     DB_NAME
                 )
-                    // ✅ Usar el callback con el ApplicationScope para la precarga
-                    .addCallback(DatabaseCallback(ApplicationScope))
-                    .fallbackToDestructiveMigration() // Manejo simple de migración
+                    .addCallback(object : RoomDatabase.Callback() {
+
+                        override fun onCreate(db: SupportSQLiteDatabase) {
+                            super.onCreate(db)
+
+                            applicationScope.launch {
+                                INSTANCE?.let { populateDatabase(it) }
+                            }
+                        }
+
+                    })
+                    .fallbackToDestructiveMigration()
                     .build()
 
                 INSTANCE = instance
@@ -70,61 +74,43 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // ✅ Callback como clase interna estática para manejar la precarga
-        private class DatabaseCallback(
-            private val scope: CoroutineScope
-        ) : RoomDatabase.Callback() {
+        private suspend fun populateDatabase(db: AppDatabase) {
 
-            // Se llama solo la primera vez que se crea la DB
-            override fun onCreate(db: SupportSQLiteDatabase) {
-                super.onCreate(db)
+            val clientDao = db.clientDao()
 
-                // Lanzar la inserción de datos iniciales en el scope proporcionado (Dispatchers.IO)
-                INSTANCE?.let { database ->
-                    scope.launch {
-                        populateDatabase(database)
-                    }
-                }
-            }
+            if (clientDao.count() == 0) {
 
-            // Función suspendida que maneja la inserción de datos
-            private suspend fun populateDatabase(database: AppDatabase) {
-                val clientDao = database.clientDao()
-                // petDao no es usado en el if(clientDao.count() == 0) pero se mantiene para claridad
-                val petDao = database.petDao()
-
-                // ✅ Solo insertar si está vacío
-                if (clientDao.count() == 0) {
-                    // Datos de prueba (Admin y María)
-                    val clientsSeed = listOf(
-                        ClientEntity(
-                            name = "Admin VetHome",
-                            email = "admin@vethome.cl",
-                            phone = "+56911111111",
-                            address = "Av. Principal 123",
-                            emergencyContact = "+56999999999",
-                            password = "Admin123!",
-                            role = "admin"
-                        ),
-                        ClientEntity(
-                            name = "María González",
-                            email = "maria@vethome.cl",
-                            phone = "+56922222222",
-                            address = "Calle Secundaria 456",
-                            emergencyContact = "+56988888888",
-                            password = "Maria123!",
-                            role = "client"
-                        )
+                val clients = listOf(
+                    ClientEntity(
+                        id = 1L,
+                        rut = "11.111.111-1",
+                        nombre = "Admin",
+                        apellido = "VetHome",
+                        correo = "admin@vethome.cl",
+                        telefono = "+56911111111",
+                        contrasena = "Admin123!",
+                        rolNombre = "ADMINISTRATIVO",  // ✅ CAMBIAR de "ADMIN" a "ADMINISTRATIVO"
+                        address = "Av. Principal 123",
+                        emergencyContact = "+56999999999"
+                    ),
+                    ClientEntity(
+                        id = 2L,
+                        rut = "22.222.222-2",
+                        nombre = "María",
+                        apellido = "González",
+                        correo = "maria@vethome.cl",
+                        telefono = "+56922222222",
+                        contrasena = "Maria123!",
+                        rolNombre = "CLIENTE",
+                        address = "Calle Secundaria 456",
+                        emergencyContact = "+56988888888"
                     )
+                )
 
-                    // Insertar clientes
-                    clientsSeed.forEach { clientDao.insert(it) }
-
-                    // ✅ Pausa breve para asegurar que la inserción de clientes ha terminado
-                    // y los IDs (1 y 2) están disponibles para las mascotas.
-                    delay(100)
-                }
+                clients.forEach { clientDao.insert(it) }
             }
+
+                delay(100)
         }
     }
 }

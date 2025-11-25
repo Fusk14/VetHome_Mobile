@@ -5,7 +5,8 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ResenaDao {
-    @Insert
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertar(resena: ResenaEntity): Long
 
     @Update
@@ -14,12 +15,14 @@ interface ResenaDao {
     @Delete
     suspend fun eliminar(resena: ResenaEntity)
 
-    @Query("SELECT * FROM resenas WHERE id = :id")
+    @Query("SELECT * FROM resenas WHERE id = :id LIMIT 1")
     suspend fun obtenerPorId(id: Long): ResenaEntity?
 
-    @Query("SELECT * FROM resenas WHERE usuarioId = :usuarioId ORDER BY createdAt DESC")
-    fun obtenerPorUsuario(usuarioId: Long): Flow<List<ResenaEntity>>
+    // ✔ cambiado usuarioId → idCliente
+    @Query("SELECT * FROM resenas WHERE idCliente = :clienteId ORDER BY createdAt DESC")
+    fun obtenerPorUsuario(clienteId: Long): Flow<List<ResenaEntity>>
 
+    // mascotaId existe y está OK
     @Query("SELECT * FROM resenas WHERE mascotaId = :mascotaId ORDER BY createdAt DESC")
     fun obtenerPorMascota(mascotaId: Long): Flow<List<ResenaEntity>>
 

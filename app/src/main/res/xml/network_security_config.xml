@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Permitir conexiones HTTP a localhost (necesario para emulador y desarrollo) -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+    </domain-config>
+    
+    <!-- Permitir conexiones HTTPS/HTTP a URLs de VSCode Port Forwarding -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">*.vscode.dev</domain>
+        <domain includeSubdomains="true">*.github.dev</domain>
+    </domain-config>
+    
+    <!-- Para desarrollo: permitir HTTP en todas las conexiones (solo para desarrollo) -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" /> <!-- Permite certificados autofirmados de VSCode -->
+        </trust-anchors>
+    </base-config>
+</network-security-config>
+

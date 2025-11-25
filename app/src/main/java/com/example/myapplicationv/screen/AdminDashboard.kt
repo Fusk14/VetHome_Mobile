@@ -203,7 +203,7 @@ fun AppointmentItem(appointment: AppointmentEntity, onDelete: () -> Unit, onEdit
     Card(modifier = Modifier.padding(vertical = 4.dp).fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(text = "Fecha: ${dateFormat.format(appointment.date)}")
-            Text(text = "Razón: ${appointment.reason}")
+            Text(text = "Razón: ${appointment.motivo ?: appointment.reason ?: "Sin motivo"}")
             Text(text = "Owner ID: ${appointment.ownerId}")
             Text(text = "Pet ID: ${appointment.petId}")
             Spacer(modifier = Modifier.height(8.dp))
