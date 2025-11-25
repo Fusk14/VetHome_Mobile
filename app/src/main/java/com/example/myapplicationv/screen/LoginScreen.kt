@@ -28,7 +28,8 @@ fun LoginScreenVm(
 
     if (state.success) {
         vm.clearLoginResult()
-        val isAdmin = currentUser.email == "admin@vethome.cl"
+        // Usar la función del ViewModel en lugar de comparar email
+        val isAdmin = vm.isCurrentUserAdmin()
         onLoginOkNavigate(isAdmin)
     }
 

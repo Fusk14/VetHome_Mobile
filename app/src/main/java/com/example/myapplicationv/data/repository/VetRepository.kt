@@ -34,23 +34,31 @@ class VetRepository(
 
     //login, registro, admin
 
+    // ✅ FUNCIÓN LOGIN MODIFICADA CON FALLBACK (API -> LOCAL)
     suspend fun login(email: String, password: String): Result<ClientEntity> {
         val emailError = validateEmail(email)
         if (emailError != null)
             return Result.failure(IllegalArgumentException(emailError))
 
         return try {
-            val localClient = clientDao.getByEmail(email)
-                ?: return Result.failure(IllegalArgumentException("Usuario no encontrado. Por favor regístrese primero."))
+            // ✅ PRIMERO: Intentar directamente con microservicios
+            println("🔍 Intentando login con microservicio para: $email")
 
             val loginRequest = LoginRequestDto(
                 correo = email,
                 contrasena = password
             )
 
+            // 1. Hacer login en microservicio
             usuarioApi.login(loginRequest)
 
+            // 2. Obtener datos del usuario
             val usuarioDto = usuarioApi.getUsuarioByCorreo(email)
+
+            println("✅ Login exitoso con microservicio: ${usuarioDto.correo}")
+
+            // 3. Buscar si existe localmente para mantener datos adicionales
+            val localClient = clientDao.getByEmail(email)
 
             val clientEntity = ClientEntity(
                 id = usuarioDto.id ?: 0L,
@@ -59,21 +67,31 @@ class VetRepository(
                 apellido = usuarioDto.apellido,
                 correo = usuarioDto.correo,
                 telefono = usuarioDto.telefono,
-                contrasena = password,
+                contrasena = password, // Guardar la contraseña para login offline
                 rolNombre = usuarioDto.rol?.nombre ?: "CLIENTE",
-                address = localClient.address,
-                emergencyContact = localClient.emergencyContact
+                address = localClient?.address, // Mantener datos locales si existen
+                emergencyContact = localClient?.emergencyContact
             )
 
+            // 4. Guardar/actualizar en base local
             clientDao.insert(clientEntity)
+
             Result.success(clientEntity)
 
         } catch (e: Exception) {
-            val client = clientDao.getByEmail(email)
-            if (client != null && client.password == password)
+            println("❌ Falló microservicio: ${e.message}")
+
+            // ✅ FALLBACK: Intentar con base local
+            println("🔍 Intentando login local para: $email")
+            val client = clientDao.login(email, password)
+
+            if (client != null) {
+                println("✅ Login exitoso local: ${client.correo}")
                 Result.success(client)
-            else
-                Result.failure(IllegalArgumentException("Error de conexión: ${e.message}"))
+            } else {
+                println("❌ Login fallido - Usuario no encontrado o credenciales incorrectas")
+                Result.failure(IllegalArgumentException("Credenciales inválidas"))
+            }
         }
     }
 
@@ -139,10 +157,15 @@ class VetRepository(
         }
     }
 
+    // En data/repository/VetRepository.kt
+
     suspend fun isAdmin(clientId: Long): Boolean {
         val client = clientDao.getById(clientId)
-        return client?.role == "admin"
+        // Convertimos a mayúsculas para evitar errores de texto
+        val role = client?.role?.uppercase() ?: ""
+        return role == "ADMIN" || role == "ADMINISTRATIVO" || role == "ROLE_ADMIN"
     }
+
 
     fun getAllClients(): Flow<List<ClientEntity>> = clientDao.getAllClients()
 
@@ -390,9 +413,10 @@ class VetRepository(
             return Result.failure(IllegalArgumentException("El comentario es demasiado largo"))
 
         return try {
+            // ✅ CORRECCIÓN AQUÍ
             val dto = ResenaDto(
                 idCliente = usuarioId,
-                idVeterinario = usuarioId,
+                idVeterinario = 1L, // 🔧 FIX TEMPORAL: Asignamos la reseña al Admin/Veterinario ID 1
                 calificacion = calificacion,
                 comentario = comentario
             )
