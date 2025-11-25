@@ -9,7 +9,11 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -18,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myapplicationv.data.local.pet.PetEntity
 import com.example.myapplicationv.viewmodel.AuthViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,6 +33,13 @@ fun PetListScreen(
     onPetDetail: (Long) -> Unit
 ) {
     val petsState by vm.pets.collectAsStateWithLifecycle()
+    var isLoading by remember { mutableStateOf(true) }
+
+    // Simulación de carga (1.5 segundos)
+    LaunchedEffect(Unit) {
+        delay(1500)
+        isLoading = false
+    }
 
     Scaffold(
         topBar = {
@@ -65,8 +77,8 @@ fun PetListScreen(
             contentAlignment = Alignment.Center
         ) {
             when {
-                // 1. Estado de carga inicial.
-                petsState.isLoading -> {
+                // 1. Estado de carga inicial o retraso artificial.
+                petsState.isLoading || isLoading -> {
                     CircularProgressIndicator()
                 }
                 // 2. Estado de error.
