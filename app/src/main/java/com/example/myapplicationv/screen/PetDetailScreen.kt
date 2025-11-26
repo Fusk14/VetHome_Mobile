@@ -55,7 +55,7 @@ fun PetDetailScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    // ✅ CAMBIO 1: La variable ahora se llama 'petState' para mayor claridad.
+
     // Su tipo es 'SelectedPetUiState'.
     val petState by vm.selectedPet.collectAsState()
 
@@ -88,7 +88,6 @@ fun PetDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                // ✅ CAMBIO 2: Accedemos al nombre a través de 'petState.pet?.nombre'
                 title = { Text(petState.pet?.nombre ?: "Detalle de Mascota") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -98,7 +97,7 @@ fun PetDetailScreen(
             )
         }
     ) { padding ->
-        // ✅ CAMBIO 3: Manejamos los tres posibles estados: carga, error y éxito.
+        // carga, error y éxito.
         Box(
             modifier = Modifier
                 .padding(padding)
@@ -192,8 +191,8 @@ fun PetDetailScreen(
                             }
                         }
 
-                        // --- Tarjeta con información detallada ---
-                        // ✅ CAMBIO 4: Usamos la variable local 'pet' para acceder a las propiedades
+
+
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(
                                 modifier = Modifier.padding(16.dp),

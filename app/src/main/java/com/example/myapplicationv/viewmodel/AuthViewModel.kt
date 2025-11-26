@@ -172,7 +172,7 @@ class AuthViewModel(
     private val _register = MutableStateFlow(RegisterUiState())
     val register: StateFlow<RegisterUiState> = _register.asStateFlow()
 
-    // ✅ NUEVO ESTADO: Éxito en el registro
+    // Éxito en el registro
     private val _showRegistrationSuccess = MutableStateFlow(false)
     val showRegistrationSuccess: StateFlow<Boolean> = _showRegistrationSuccess.asStateFlow()
 
@@ -188,7 +188,7 @@ class AuthViewModel(
     private val _profile = MutableStateFlow(ProfileUiState())
     val profile: StateFlow<ProfileUiState> = _profile.asStateFlow()
 
-    // 🆕 ESTADOS DE RESEÑAS
+
     private val _resenas = MutableStateFlow(ResenasUiState())
     val resenas: StateFlow<ResenasUiState> = _resenas.asStateFlow()
 
@@ -211,7 +211,7 @@ class AuthViewModel(
                             _appointments.update { it.copy(appointments = appointmentsList, isLoading = false) }
                         }
                     }
-                    // 🆕 Cargar reseñas al iniciar sesión
+
                     launch {
                         loadResenas()
                     }
@@ -219,7 +219,7 @@ class AuthViewModel(
                     _pets.update { PetsUiState() }
                     _appointments.update { AppointmentsUiState() }
                     _profile.value = ProfileUiState()
-                    _resenas.value = ResenasUiState() // 🆕 Limpiar reseñas al cerrar sesión
+                    _resenas.value = ResenasUiState()
                 }
             }
         }
@@ -227,7 +227,7 @@ class AuthViewModel(
         checkUserSession()
     }
 
-    // --- LÓGICA DE SESIÓN (LOGIN/LOGOUT/REGISTER) ---
+    //LÓGICA DE SESIÓN
     private fun checkUserSession() {
         viewModelScope.launch {
             val loggedIn = userPreferences.isLoggedIn.first()
@@ -310,8 +310,8 @@ class AuthViewModel(
             _register.value = RegisterUiState()
             _selectedPet.value = SelectedPetUiState()
             _profile.value = ProfileUiState()
-            _resenas.value = ResenasUiState() // 🆕 Limpiar reseñas
-            _resenaDetail.value = ResenaDetailUiState() // 🆕 Limpiar detalle de reseña
+            _resenas.value = ResenasUiState()
+            _resenaDetail.value = ResenaDetailUiState()
             _sessionState.update {
                 it.copy(
                     isLoggedIn = false,
@@ -322,7 +322,7 @@ class AuthViewModel(
         }
     }
 
-    // En viewmodel/AuthViewModel.kt
+
 
     fun isCurrentUserAdmin(): Boolean {
         val role = _userRole.value.uppercase() // Normalizamos a mayúsculas
@@ -330,9 +330,9 @@ class AuthViewModel(
     }
 
 
-    // --------------------------------------------------------------------------------------
-    // --- LÓGICA DE PERFIL ---
-    // --------------------------------------------------------------------------------------
+
+    //LÓGICA DE PERFIL
+
 
     fun loadProfile() {
         viewModelScope.launch {
@@ -418,9 +418,9 @@ class AuthViewModel(
         }
     }
 
-    // --------------------------------------------------------------------------------------
-    // --- FUNCIONES DE ADMINISTRACIÓN Y DATOS GLOBALES ---
-    // --------------------------------------------------------------------------------------
+
+    //FUNCIONES DE ADMINISTRACIÓN Y DATOS GLOBALES
+
 
     fun loadUserById(userId: Long) {
         viewModelScope.launch {
@@ -497,7 +497,7 @@ class AuthViewModel(
         }
     }
 
-    // ✅ MODIFICACIÓN: Función submitRegister
+    // Función submitRegister
     fun submitRegister() {
         val s = _register.value
         if (!s.canSubmit || s.isSubmitting) return
@@ -515,8 +515,8 @@ class AuthViewModel(
 
             if (result.isSuccess) {
                 _register.update { it.copy(isSubmitting = false, success = true) }
-                _showRegistrationSuccess.value = true // ✅ Mostrar alerta de éxito
-                clearRegistrationForm() // ✅ Limpiar formulario
+                _showRegistrationSuccess.value = true // Mostrar alerta de éxito
+                clearRegistrationForm() // Limpiar formulario
             } else {
                 val error = result.exceptionOrNull()?.message ?: "No se pudo registrar"
                 _register.update { it.copy(isSubmitting = false, success = false, errorMsg = error) }
@@ -524,14 +524,14 @@ class AuthViewModel(
         }
     }
 
-    // ✅ NUEVA FUNCIÓN: Limpiar el formulario de registro
+    //Limpiar el formulario de registro
     fun clearRegistrationForm() {
         _register.update {
             RegisterUiState() // Esto reinicia todo a valores por defecto
         }
     }
 
-    // ✅ NUEVA FUNCIÓN: Ocultar la alerta de éxito
+    //Ocultar la alerta de éxito
     fun hideRegistrationSuccess() {
         _showRegistrationSuccess.value = false
     }
@@ -631,9 +631,9 @@ class AuthViewModel(
         }
     }
 
-    // --------------------------------------------------------------------------------------
-    // ⭐ FUNCIONES DE RESEÑAS
-    // --------------------------------------------------------------------------------------
+
+    //RESEÑAS
+
 
     fun loadResenas() {
         val userId = _currentUser.value.clientId
@@ -641,7 +641,12 @@ class AuthViewModel(
 
         viewModelScope.launch {
             _resenas.update { it.copy(isLoading = true, error = null) }
-            // Recolectar Flow del repositorio
+
+            // SINCRONIZAR ANTES DE CARGAR
+            repository.sincronizarResenasPendientes()
+
+            // Luego cargar las reseñas
+            // Recolectar Flow del repositorio, que ahora debe incluir las recién sincronizadas
             repository.obtenerResenasPorUsuario(userId).collect { resenasList ->
                 _resenas.update {
                     it.copy(

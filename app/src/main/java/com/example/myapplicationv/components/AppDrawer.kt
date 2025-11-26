@@ -54,7 +54,7 @@ fun defaultDrawerItems(
     onHome: () -> Unit,
     onMascotas: () -> Unit,
     onCitas: () -> Unit,
-    onResenas: () -> Unit, // ✅ NUEVO: Reseñas
+    onResenas: () -> Unit,
     onLogin: () -> Unit,
     onProfile: () -> Unit,
     onLogout: () -> Unit,
@@ -69,7 +69,7 @@ fun defaultDrawerItems(
             add(DrawerItem("Mi Perfil", Icons.Filled.Person, onProfile))
             add(DrawerItem("Mis Mascotas", Icons.Filled.Pets, onMascotas))
             add(DrawerItem("Mis Citas", Icons.Filled.Event, onCitas))
-            add(DrawerItem("Mis Reseñas", Icons.Filled.Star, onResenas)) // ✅ NUEVO
+            add(DrawerItem("Mis Reseñas", Icons.Filled.Star, onResenas))
             add(DrawerItem("", Icons.Filled.Person) {}) // Separador
             add(DrawerItem("Cerrar Sesión", Icons.Filled.ExitToApp, onLogout))
         }

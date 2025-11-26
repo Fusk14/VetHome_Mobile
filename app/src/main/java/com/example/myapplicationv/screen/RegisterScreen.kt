@@ -30,10 +30,10 @@ fun RegisterScreenVm(
     onGoLogin: () -> Unit
 ) {
     val state by vm.register.collectAsStateWithLifecycle()
-    // ✅ NUEVO: Recolectar el estado de éxito del registro
+    // Recolectar el estado de éxito del registro
     val showSuccess by vm.showRegistrationSuccess.collectAsStateWithLifecycle()
 
-    // ✅ NUEVO: Manejar éxito del registro con AlertDialog
+    //  Manejar éxito del registro con AlertDialog
     if (showSuccess) {
         AlertDialog(
             onDismissRequest = { vm.hideRegistrationSuccess() },
@@ -126,7 +126,7 @@ private fun RegisterScreen(
         }
     }
 
-    // 🆕 VERSIÓN SIMPLIFICADA SIN SCAFFOLD (para evitar problemas)
+
     Column(
         modifier = Modifier
             .fillMaxSize()

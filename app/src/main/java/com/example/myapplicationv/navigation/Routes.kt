@@ -11,7 +11,7 @@ sealed class Route(val path: String) {
     object AddCita : Route("add_cita")
     object AdminDashboard : Route("admin_dashboard")
 
-    // ✅ Nueva ruta: Perfil del usuario
+
     object Perfil : Route("perfil")
 
     // Rutas con argumentos
@@ -22,11 +22,11 @@ sealed class Route(val path: String) {
     object EditUser : Route("edit_user/{userId}") {
         fun createRoute(userId: Long) = "edit_user/$userId"
     }
-    // ✅ NUEVAS RUTAS PARA RESEÑAS
+
     object Resenas : Route("resenas")
     object AddResena : Route("add_resena")
 
-    // Rutas con argumentos para reseñas
+
     object ResenaDetail : Route("resena_detail/{resenaId}") {
         fun createRoute(resenaId: Long) = "resena_detail/$resenaId"
     }

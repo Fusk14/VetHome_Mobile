@@ -55,7 +55,7 @@ fun AppNavGraph(
     val goAdminDashboard: () -> Unit = { navController.navigate(Route.AdminDashboard.path) }
     val goProfile: () -> Unit = { navController.navigate(Route.Perfil.path) }
 
-    // ✅ ACTUALIZADO: Rutas para Reseñas
+    // Rutas para Reseñas
     val goResenas: () -> Unit = { navController.navigate(Route.Resenas.path) }
     val goAddResena: () -> Unit = { navController.navigate(Route.AddResena.path) }
 
@@ -80,7 +80,7 @@ fun AppNavGraph(
                         scope.launch { drawerState.close() }
                         if (isLoggedIn) goCitas() else goLogin()
                     },
-                    // ✅ ACTUALIZADO: Navegación a Reseñas en Drawer
+                    //  Navegación a Reseñas en Drawer
                     onResenas = {
                         scope.launch { drawerState.close() }
                         if (isLoggedIn) goResenas() else goLogin()
@@ -116,7 +116,7 @@ fun AppNavGraph(
                     onHome = goHome,
                     onMascotas = goMascotas,
                     onCitas = goCitas,
-                    onResenas = goResenas, // ✅ NUEVO: Pasar la función goResenas al TopBar
+                    onResenas = goResenas, // Pasar la función goResenas al TopBar
                     onLogin = goLogin,
                     isUserLoggedIn = isLoggedIn,
                     userName = currentUser.name,
@@ -275,7 +275,7 @@ fun AppNavGraph(
                     }
                 }
 
-                // 🆕 PANTALLA DE LISTADO DE RESEÑAS
+                // PANTALLA DE LISTADO DE RESEÑAS
                 composable(Route.Resenas.path) {
                     if (isLoggedIn) {
                         ResenasScreen(
@@ -291,7 +291,7 @@ fun AppNavGraph(
                     }
                 }
 
-                // 🆕 PANTALLA PARA AGREGAR RESEÑA
+                //PANTALLA PARA AGREGAR RESEÑA
                 composable(Route.AddResena.path) {
                     if (isLoggedIn) {
                         AddResenaScreen(
@@ -304,7 +304,7 @@ fun AppNavGraph(
                     }
                 }
 
-                // 🆕 PANTALLA DE DETALLE DE RESEÑA
+                // PANTALLA DE DETALLE DE RESEÑA
                 composable(
                     route = Route.ResenaDetail.path,
                     arguments = listOf(navArgument("resenaId") { type = NavType.LongType })

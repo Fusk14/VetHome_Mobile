@@ -57,7 +57,7 @@ fun AddPetScreen(
     )
     datePickerDialog.datePicker.maxDate = calendar.timeInMillis
 
-    // ✅ Navegar solo después de agregar una mascota correctamente
+    //Navegar solo después de agregar una mascota correctamente
     LaunchedEffect(petsState.isLoading, petsState.pets.size) {
         if (hasSubmitted && !petsState.isLoading && petsState.error == null) {
             onPetAdded()

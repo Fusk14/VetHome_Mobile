@@ -1,6 +1,6 @@
 package com.example.myapplicationv.data.remote.dto
 
-// Línea 1: data class que representa la forma del JSON de usuarios
+// data class que representa la forma del JSON de usuarios
 data class UsuarioDto(
     val id: Long? = null,     // Línea 3: id del usuario
     val rut: String,           // Línea 4: RUT del usuario

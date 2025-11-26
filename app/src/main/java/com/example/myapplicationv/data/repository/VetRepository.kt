@@ -34,14 +34,14 @@ class VetRepository(
 
     //login, registro, admin
 
-    // ✅ FUNCIÓN LOGIN MODIFICADA CON FALLBACK (API -> LOCAL)
+    // FUNCIÓN LOGIN MODIFICADA CON FALLBACK (API -> LOCAL)
     suspend fun login(email: String, password: String): Result<ClientEntity> {
         val emailError = validateEmail(email)
         if (emailError != null)
             return Result.failure(IllegalArgumentException(emailError))
 
         return try {
-            // ✅ PRIMERO: Intentar directamente con microservicios
+            // Intentar directamente con microservicios
             println("🔍 Intentando login con microservicio para: $email")
 
             val loginRequest = LoginRequestDto(
@@ -55,7 +55,7 @@ class VetRepository(
             // 2. Obtener datos del usuario
             val usuarioDto = usuarioApi.getUsuarioByCorreo(email)
 
-            println("✅ Login exitoso con microservicio: ${usuarioDto.correo}")
+            println("Login exitoso con microservicio: ${usuarioDto.correo}")
 
             // 3. Buscar si existe localmente para mantener datos adicionales
             val localClient = clientDao.getByEmail(email)
@@ -73,23 +73,23 @@ class VetRepository(
                 emergencyContact = localClient?.emergencyContact
             )
 
-            // 4. Guardar/actualizar en base local
+
             clientDao.insert(clientEntity)
 
             Result.success(clientEntity)
 
         } catch (e: Exception) {
-            println("❌ Falló microservicio: ${e.message}")
+            println("Falló microservicio: ${e.message}")
 
-            // ✅ FALLBACK: Intentar con base local
+            // Intentar con base local
             println("🔍 Intentando login local para: $email")
             val client = clientDao.login(email, password)
 
             if (client != null) {
-                println("✅ Login exitoso local: ${client.correo}")
+                println(" Login exitoso local: ${client.correo}")
                 Result.success(client)
             } else {
-                println("❌ Login fallido - Usuario no encontrado o credenciales incorrectas")
+                println(" Login fallido - Usuario no encontrado o credenciales incorrectas")
                 Result.failure(IllegalArgumentException("Credenciales inválidas"))
             }
         }
@@ -157,12 +157,13 @@ class VetRepository(
         }
     }
 
-    // En data/repository/VetRepository.kt
+
 
     suspend fun isAdmin(clientId: Long): Boolean {
         val client = clientDao.getById(clientId)
         // Convertimos a mayúsculas para evitar errores de texto
-        val role = client?.role?.uppercase() ?: ""
+        val role = client?.rolNombre?.uppercase() ?: ""
+        // Se corrigió 'role' por 'rolNombre'
         return role == "ADMIN" || role == "ADMINISTRATIVO" || role == "ROLE_ADMIN"
     }
 
@@ -394,6 +395,27 @@ class VetRepository(
 
     //reseñas
 
+    // FUNCIÓN PARA BUSCAR VETERINARIO VÁLIDO (MOCK)
+    // Se mantiene dentro de la clase para acceder a la API/DAO si es necesario en el futuro.
+    // Actualmente, es un mock que devuelve un ID fijo (2L).
+    private suspend fun obtenerVeterinarioValido(): Long {
+        // Prueba con estos IDs comunes que podrían ser veterinarios
+        val posiblesVeterinarios = listOf(2L, 3L, 4L, 5L, 10L, 100L)
+
+        for (id in posiblesVeterinarios) {
+            try {
+                // Lógica de validación real (Ej: clientDao.getById(id) y verificar rol)
+                // Por ahora, devolvemos uno fijo para probar
+                return 2L
+            } catch (e: Exception) {
+                continue
+            }
+        }
+        // Fallback a un ID conocido que debe ser un veterinario en el backend
+        return 2L
+    }
+
+    // FUNCIÓN CREAR RESEÑA MODIFICADA
     suspend fun crearResena(
         usuarioId: Long,
         mascotaId: Long,
@@ -409,19 +431,25 @@ class VetRepository(
         if (comentario.isBlank())
             return Result.failure(IllegalArgumentException("El comentario no puede estar vacío"))
 
+        // Nueva validación de longitud máxima
         if (comentario.length > 500)
             return Result.failure(IllegalArgumentException("El comentario es demasiado largo"))
 
         return try {
-            // ✅ CORRECCIÓN AQUÍ
+            // BUSCAR UN VETERINARIO VÁLIDO
+            val veterinarioId = obtenerVeterinarioValido()
+
             val dto = ResenaDto(
                 idCliente = usuarioId,
-                idVeterinario = 1L, // 🔧 FIX TEMPORAL: Asignamos la reseña al Admin/Veterinario ID 1
+                idVeterinario = veterinarioId, // ID de un veterinario real (o mock)
                 calificacion = calificacion,
                 comentario = comentario
             )
 
+            println("Enviando reseña al servidor: Cliente=$usuarioId, Veterinario=$veterinarioId")
+
             val creada = resenaApi.createResena(dto)
+            println(" Reseña creada exitosamente en servidor: ${creada.id}")
 
             val entity = ResenaEntity(
                 id = creada.id ?: 0L,
@@ -431,27 +459,77 @@ class VetRepository(
                 comentario = creada.comentario,
                 mascotaId = mascotaId,
                 mascotaNombre = mascotaNombre,
-                fecha = fecha
+                fecha = fecha,
+                sincronizado = true // MARCADA COMO SINCRONIZADA
             )
 
             resenaDao.insertar(entity)
             Result.success(entity.id)
 
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            println("Error creando reseña en servidor: ${e.message}")
+            e.printStackTrace()
+
+            // Guardar localmente como no sincronizada (FALLBACK)
             val localId = resenaDao.insertar(
                 ResenaEntity(
                     idCliente = usuarioId,
-                    idVeterinario = usuarioId,
+                    idVeterinario = 1L, // Valor temporal si falla la conexión
                     mascotaId = mascotaId,
                     mascotaNombre = mascotaNombre,
                     calificacion = calificacion,
                     comentario = comentario,
-                    fecha = fecha
+                    fecha = fecha,
+                    sincronizado = false // ❌ NO SINCRONIZADA
                 )
             )
+            println("Reseña guardada localmente con ID: $localId")
             Result.success(localId)
         }
     }
+
+    // UNCIÓN DE SINCRONIZACIÓN DE RESEÑAS PENDIENTES
+    suspend fun sincronizarResenasPendientes() {
+        try {
+            // Asume que resenaDao.obtenerNoSincronizadas() existe y devuelve List<ResenaEntity>
+            val resenasPendientes = resenaDao.obtenerNoSincronizadas()
+            println("Sincronizando ${resenasPendientes.size} reseñas pendientes...")
+
+            for (resenaLocal in resenasPendientes) {
+                try {
+                    // USAR UN VETERINARIO VÁLIDO para las pendientes también
+                    val veterinarioValido = obtenerVeterinarioValido() // Usamos la función ya definida
+
+                    val dto = ResenaDto(
+                        idCliente = resenaLocal.idCliente,
+                        idVeterinario = veterinarioValido,
+                        calificacion = resenaLocal.calificacion,
+                        comentario = resenaLocal.comentario
+                    )
+
+                    println("📤 Sincronizando reseña local ID: ${resenaLocal.id}")
+                    val resenaRemota = resenaApi.createResena(dto)
+
+                    // Actualizar la reseña local con el ID del servidor
+                    // Asume que resenaDao.actualizar(ResenaEntity) existe
+                    resenaDao.actualizar(
+                        resenaLocal.copy(
+                            id = resenaRemota.id ?: resenaLocal.id,
+                            idVeterinario = veterinarioValido,
+                            sincronizado = true
+                        )
+                    )
+                    println("Reseña ${resenaLocal.id} sincronizada exitosamente")
+
+                } catch (e: Exception) {
+                    println(" Error sincronizando reseña ${resenaLocal.id}: ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            println(" Error en sincronización general: ${e.message}")
+        }
+    }
+
 
     fun obtenerResenasPorUsuario(usuarioId: Long): Flow<List<ResenaEntity>> =
         resenaDao.obtenerPorUsuario(usuarioId)

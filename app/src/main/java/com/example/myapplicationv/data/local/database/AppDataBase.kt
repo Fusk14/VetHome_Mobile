@@ -89,7 +89,7 @@ abstract class AppDatabase : RoomDatabase() {
                         correo = "admin@vethome.cl",
                         telefono = "+56911111111",
                         contrasena = "Admin123!",
-                        rolNombre = "ADMINISTRATIVO",  // ✅ CAMBIAR de "ADMIN" a "ADMINISTRATIVO"
+                        rolNombre = "ADMINISTRATIVO",
                         address = "Av. Principal 123",
                         emergencyContact = "+56999999999"
                     ),

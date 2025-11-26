@@ -38,7 +38,7 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminDashboard(viewModel: AuthViewModel, navController: NavController) {
-    // ✅ CORREGIDO: Usando collectAsState con StateFlow
+
     val clientsState by viewModel.allClients.collectAsState()
     val petsState by viewModel.allPets.collectAsState()
     val appointmentsState by viewModel.allAppointments.collectAsState()

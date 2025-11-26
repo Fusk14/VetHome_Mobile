@@ -10,7 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
-// ✅ CORRECCIÓN: Delegate de DataStore (debe estar fuera de la clase)
+//  Delegate de DataStore (debe estar fuera de la clase)
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "user_preferences")
 
 class UserPreferences private constructor(private val dataStore: DataStore<Preferences>) {
@@ -64,7 +64,7 @@ class UserPreferences private constructor(private val dataStore: DataStore<Prefe
         @Volatile
         private var INSTANCE: UserPreferences? = null
 
-        // ✅ CORRECCIÓN: Función getInstance corregida
+        // Función getInstance corregida
         fun getInstance(context: Context): UserPreferences {
             return INSTANCE ?: synchronized(this) {
                 val instance = UserPreferences(context.dataStore)

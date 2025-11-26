@@ -1,6 +1,6 @@
 package com.example.myapplicationv.data.remote
 
-// Importamos las anotaciones necesarias para definir endpoints HTTP.
+
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -9,10 +9,10 @@ import retrofit2.http.Path
 // Línea 2: import de nuestro DTO
 import com.example.myapplicationv.data.remote.dto.MascotaDto
 
-// Línea 4: interfaz con endpoints del servicio de mascotas
+// interfaz con endpoints del servicio de mascotas
 interface MascotaApi {
     
-    // Línea 6: GET /api/mascotas -> devuelve lista de MascotaDto
+    //  GET /api/mascotas -> devuelve lista de MascotaDto
     @GET("api/mascotas")
     suspend fun getMascotas(): List<MascotaDto>
     

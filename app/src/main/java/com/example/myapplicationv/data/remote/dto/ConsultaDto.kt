@@ -1,6 +1,6 @@
 package com.example.myapplicationv.data.remote.dto
 
-// Línea 1: data class que representa la forma del JSON de consultas
+//  data class que representa la forma del JSON de consultas
 data class ConsultaDto(
     val id: Long? = null,         // Línea 3: id de la consulta
     val idMascota: Long,          // Línea 4: id de la mascota

@@ -45,7 +45,7 @@ fun VetHomeApp() {
                     clientDao = database.clientDao(),
                     petDao = database.petDao(),
                     appointmentDao = database.appointmentDao(),
-                    resenaDao = database.resenaDao() // ✅ NUEVO: Agregar resenaDao
+                    resenaDao = database.resenaDao()
                 )
             }
 

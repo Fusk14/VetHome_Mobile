@@ -24,7 +24,7 @@ fun EditPetScreen(
     onPetUpdated: () -> Unit,
     onBack: () -> Unit
 ) {
-    // ✅ CORRECCIÓN: Usar el estado correcto del ViewModel
+    //  Usar el estado correcto del ViewModel
     val selectedPetState by viewModel.selectedPet.collectAsStateWithLifecycle()
 
     // Variables de estado para los campos del formulario

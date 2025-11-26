@@ -31,7 +31,7 @@ fun AddResenaScreen(
     var comentario by remember { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
-    // ✅ CORRECCIÓN: Agregar esta variable al inicio con las otras
+
     var showSuccess by remember { mutableStateOf(false) }
 
     val petsState by vm.pets.collectAsState()
@@ -44,7 +44,7 @@ fun AddResenaScreen(
         }
     }
 
-    // ✅ CORRECCIÓN: Mover LaunchedEffect aquí afuera, reacciona a showSuccess
+    // Mover LaunchedEffect aquí afuera, reacciona a showSuccess
     LaunchedEffect(showSuccess) {
         if (showSuccess) {
             delay(500) // Esperar un poco para mostrar feedback
@@ -255,13 +255,13 @@ fun AddResenaScreen(
                         fecha = fechaActual
                     )
 
-                    // ✅ CORRECCIÓN: Usar un estado para controlar la navegación
+                    //estado para controlar la navegación
                     showSuccess = true
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
-                // ✅ CORRECCIÓN: Deshabilitar también si está cargando
+                //Deshabilitar también si está cargando
                 enabled = selectedMascotaId != null && calificacion > 0 && comentario.isNotBlank() && comentario.length <= 500 && !resenasState.isLoading
             ) {
                 if (resenasState.isLoading) {

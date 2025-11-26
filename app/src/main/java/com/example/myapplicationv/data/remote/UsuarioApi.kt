@@ -1,6 +1,6 @@
 package com.example.myapplicationv.data.remote
 
-// Importamos las anotaciones necesarias para definir endpoints HTTP.
+
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -10,7 +10,7 @@ import com.example.myapplicationv.data.remote.dto.UsuarioDto
 import com.example.myapplicationv.data.remote.dto.LoginRequestDto
 import com.example.myapplicationv.data.remote.dto.RegisterRequestDto
 
-// Línea 4: interfaz con endpoints del servicio de usuarios
+// interfaz con endpoints del servicio de usuarios
 interface UsuarioApi {
     
     // Línea 6: POST /api/auth/login -> login de usuario
