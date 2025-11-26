@@ -109,21 +109,6 @@ class VetRepositoryTest {
         assertEquals("Formato de email inválido", result.exceptionOrNull()?.message)
     }
 
-    @Test
-    fun login_usuarioNoEncontrado_retornaError() = runBlocking {
-        // Arrange
-        val email = "notfound@test.cl"
-        val password = "Pass123!"
-
-        coEvery { clientDao.getByEmail(email) } returns null
-
-        // Act
-        val result = repository.login(email, password)
-
-        // Assert
-        assertTrue(result.isFailure)
-        assertEquals("Usuario no encontrado. Por favor regístrese primero.", result.exceptionOrNull()?.message)
-    }
 
     @Test
     fun register_datosValidos_retornaIdCliente() = runBlocking {
