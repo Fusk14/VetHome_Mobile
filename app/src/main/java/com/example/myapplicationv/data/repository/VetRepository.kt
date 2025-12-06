@@ -153,7 +153,8 @@ class VetRepository(
             Result.success(clientEntity.id)
 
         } catch (e: Exception) {
-            Result.failure(IllegalStateException("Error de conexión: ${e.message}"))
+            // Pasar la excepción original para que ErrorMessages pueda procesarla correctamente
+            Result.failure(e)
         }
     }
 
@@ -201,13 +202,70 @@ class VetRepository(
         return Result.success(Unit)
     }
 
-    suspend fun changePassword(clientId: Long, newPassword: String): Result<Unit> {
+    suspend fun forgotPassword(email: String): Result<Unit> {
+        val emailError = validateEmail(email)
+        if (emailError != null)
+            return Result.failure(IllegalArgumentException(emailError))
+
+        return try {
+            val request = com.example.myapplicationv.data.remote.dto.ForgotPasswordRequestDto(
+                correo = email
+            )
+            usuarioApi.forgotPassword(request)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            // Pasar la excepción original para que ErrorMessages pueda procesarla correctamente
+            Result.failure(e)
+        }
+    }
+
+    suspend fun changePassword(clientId: Long, currentPassword: String, newPassword: String): Result<Unit> {
         val passError = validateStrongPassword(newPassword)
         if (passError != null)
             return Result.failure(IllegalArgumentException(passError))
 
-        clientDao.updatePassword(clientId, newPassword)
-        return Result.success(Unit)
+        if (currentPassword.isBlank())
+            return Result.failure(IllegalArgumentException("Debes ingresar tu contraseña actual"))
+
+        return try {
+            // Obtener el usuario actual
+            val client = clientDao.getById(clientId)
+                ?: return Result.failure(IllegalArgumentException("Usuario no encontrado"))
+
+            // Verificar que la contraseña actual sea correcta
+            val loginRequest = LoginRequestDto(
+                correo = client.correo,
+                contrasena = currentPassword
+            )
+            
+            try {
+                usuarioApi.login(loginRequest)
+            } catch (e: Exception) {
+                return Result.failure(IllegalArgumentException("La contraseña actual es incorrecta"))
+            }
+
+            // Cambiar la contraseña en el servidor
+            val changePasswordRequest = com.example.myapplicationv.data.remote.dto.ChangePasswordRequestDto(
+                correo = client.correo,
+                contrasenaActual = currentPassword,
+                nuevaContrasena = newPassword
+            )
+            
+            try {
+                usuarioApi.changePassword(changePasswordRequest)
+            } catch (e: Exception) {
+                // Si falla el servidor, actualizar localmente como fallback
+                clientDao.updatePassword(clientId, newPassword)
+                return Result.success(Unit)
+            }
+
+            // Actualizar localmente también
+            clientDao.updatePassword(clientId, newPassword)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            // Pasar la excepción original para que ErrorMessages pueda procesarla correctamente
+            Result.failure(e)
+        }
     }
 
     //mascotas
@@ -221,21 +279,24 @@ class VetRepository(
         nombre: String,
         especie: String,
         raza: String,
+        genero: String?,
         fechaNacimiento: String?,
         peso: Double?,
         color: String?,
-        notasMedicas: String?
+        notasMedicas: String?,
+        imagenUri: String? = null
     ): Result<Long> {
 
         val nombreError = validatePetName(nombre)
         val especieError = validateSpecies(especie)
         val razaError = validateBreed(raza)
+        val generoError = genero?.let { validateGender(it) }
         val fechaError = fechaNacimiento?.let { validateBirthDate(it) }
         val pesoError = peso?.let { validateWeight(it.toString()) }
         val colorError = color?.let { validateColor(it) }
         val notasError = notasMedicas?.let { validateMedicalNotes(it) }
 
-        val firstError = listOf(nombreError, especieError, razaError, fechaError, pesoError, colorError, notasError)
+        val firstError = listOf(nombreError, especieError, razaError, generoError, fechaError, pesoError, colorError, notasError)
             .firstOrNull { it != null }
 
         if (firstError != null)
@@ -259,6 +320,7 @@ class VetRepository(
                 nombre = nombre,
                 especie = especie,
                 raza = raza,
+                genero = genero,
                 edad = edad
             )
 
@@ -270,31 +332,41 @@ class VetRepository(
                 nombre = creado.nombre,
                 especie = creado.especie,
                 raza = creado.raza,
+                genero = creado.genero,
                 edad = creado.edad,
                 fechaNacimiento = fechaNacimiento,
                 peso = peso,
                 color = color,
-                notasMedicas = notasMedicas
+                notasMedicas = notasMedicas,
+                imagenUri = imagenUri
             )
 
             petDao.insert(petEntity)
             Result.success(petEntity.id)
 
-        } catch (_: Exception) {
-            val localId = petDao.insert(
-                PetEntity(
-                    idCliente = ownerId,
-                    nombre = nombre,
-                    especie = especie,
-                    raza = raza,
-                    edad = edad,
-                    fechaNacimiento = fechaNacimiento,
-                    peso = peso,
-                    color = color,
-                    notasMedicas = notasMedicas
+        } catch (e: Exception) {
+            // Intentar guardar localmente como fallback
+            try {
+                val localId = petDao.insert(
+                    PetEntity(
+                        idCliente = ownerId,
+                        nombre = nombre,
+                        especie = especie,
+                        raza = raza,
+                        genero = genero,
+                        edad = edad,
+                        fechaNacimiento = fechaNacimiento,
+                        peso = peso,
+                        color = color,
+                        notasMedicas = notasMedicas,
+                        imagenUri = imagenUri
+                    )
                 )
-            )
-            Result.success(localId)
+                Result.success(localId)
+            } catch (localException: Exception) {
+                // Si también falla el guardado local, retornar el error original
+                Result.failure(e)
+            }
         }
     }
 
@@ -304,6 +376,10 @@ class VetRepository(
         val err = validateWeight(nuevoPeso.toString())
         if (err != null) throw IllegalArgumentException(err)
         petDao.updateWeight(petId, nuevoPeso)
+    }
+
+    suspend fun updatePetImageUri(petId: Long, imagenUri: String?) {
+        petDao.updateImageUri(petId, imagenUri)
     }
 
     suspend fun deletePet(petId: Long) = petDao.deleteById(petId)
@@ -542,4 +618,8 @@ class VetRepository(
 
     suspend fun obtenerPromedioCalificacionMascota(mascotaId: Long): Double? =
         resenaDao.obtenerPromedioCalificacion(mascotaId)
+}
+
+private fun validateGender(it: String): String? {
+    return null
 }

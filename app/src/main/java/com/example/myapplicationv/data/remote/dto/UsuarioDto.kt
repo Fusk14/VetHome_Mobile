@@ -31,3 +31,13 @@ data class RegisterRequestDto(
     val rolNombre: String
 )
 
+data class ForgotPasswordRequestDto(
+    val correo: String
+)
+
+data class ChangePasswordRequestDto(
+    val correo: String,
+    val contrasenaActual: String,
+    val nuevaContrasena: String
+)
+

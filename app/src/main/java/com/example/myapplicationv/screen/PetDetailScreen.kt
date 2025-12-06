@@ -1,10 +1,12 @@
 package com.example.myapplicationv.screen
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -35,16 +37,30 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
-// --- Funciones auxiliares para manejo de archivos (se mantienen igual) ---
-private fun createTempImageFile(context: Context): File {
+// --- Funciones auxiliares para manejo de archivos ---
+private fun createTempImageFile(context: Context): File? {
+    return try {
     val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
     val storageDir = context.cacheDir
-    return File.createTempFile("JPEG_${timeStamp}_", ".jpg", storageDir)
+        val imageFile = File.createTempFile("JPEG_${timeStamp}_", ".jpg", storageDir)
+        // Asegurar que el archivo existe y es escribible
+        if (!imageFile.exists()) {
+            imageFile.createNewFile()
+        }
+        imageFile
+    } catch (e: Exception) {
+        null
+    }
 }
 
-private fun getImageUriForFile(context: Context, file: File): Uri {
+private fun getImageUriForFile(context: Context, file: File?): Uri? {
+    if (file == null || !file.exists()) return null
+    return try {
     val authority = "${context.packageName}.fileprovider"
-    return FileProvider.getUriForFile(context, authority, file)
+        FileProvider.getUriForFile(context, authority, file)
+    } catch (e: Exception) {
+        null
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,15 +76,64 @@ fun PetDetailScreen(
     val petState by vm.selectedPet.collectAsState()
 
     // --- Lógica de Cámara y Galería ---
-    var photoUriString by rememberSaveable { mutableStateOf<String?>(null) }
+    // Inicializar con la imagen guardada de la mascota si existe
+    var photoUriString by rememberSaveable(petState.pet?.imagenUri) { 
+        mutableStateOf<String?>(petState.pet?.imagenUri) 
+    }
     var pendingCaptureUri by remember { mutableStateOf<Uri?>(null) }
 
+    // IMPORTANTE: Declarar takePictureLauncher primero para que pueda ser usado por requestPermissionLauncher
     val takePictureLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
-        if (success) {
-            photoUriString = pendingCaptureUri?.toString()
-            Toast.makeText(context, "Foto guardada", Toast.LENGTH_SHORT).show()
+        if (success && pendingCaptureUri != null) {
+            // Verificar que el archivo realmente existe después de tomar la foto
+            try {
+                val uri = pendingCaptureUri!!
+                val file = File(uri.path ?: "")
+                if (file.exists() && file.length() > 0) {
+                    val uriString = uri.toString()
+                    photoUriString = uriString
+                    // Guardar la imagen en la base de datos
+                    petState.pet?.id?.let { petId ->
+                        vm.updatePetImage(petId, uriString)
+                    }
+                    Toast.makeText(context, "Foto guardada correctamente", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "La foto no se guardó correctamente", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error al procesar la foto: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(context, "No se pudo tomar la foto. Intenta nuevamente.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Launcher para solicitar permisos de cámara
+    val requestPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            // Si se otorga el permiso, tomar la foto
+            pendingCaptureUri?.let { uri ->
+                try {
+                    // Verificar que el URI es válido antes de lanzar
+                    if (uri.scheme == "content" || uri.scheme == "file") {
+                        takePictureLauncher.launch(uri)
+                    } else {
+                        Toast.makeText(context, "URI inválido para la cámara", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: SecurityException) {
+                    Toast.makeText(context, "Error de permisos: ${e.message}", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Error al abrir la cámara: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            } ?: run {
+                Toast.makeText(context, "No se pudo preparar el archivo para la foto", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(context, "Se necesita permiso de cámara para tomar fotos", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -76,7 +141,12 @@ fun PetDetailScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let {
-            photoUriString = it.toString()
+            val uriString = it.toString()
+            photoUriString = uriString
+            // Guardar la imagen en la base de datos
+            petState.pet?.id?.let { petId ->
+                vm.updatePetImage(petId, uriString)
+            }
             Toast.makeText(context, "Foto seleccionada", Toast.LENGTH_SHORT).show()
         }
     }
@@ -175,10 +245,51 @@ fun PetDetailScreen(
                         // --- Botones para gestión de la foto ---
                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             Button(onClick = {
+                                try {
+                                    // Crear archivo temporal primero
                                 val file = createTempImageFile(context)
+                                    if (file == null) {
+                                        Toast.makeText(
+                                            context,
+                                            "Error al crear archivo temporal",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        return@Button
+                                    }
+                                    
                                 val uri = getImageUriForFile(context, file)
+                                    if (uri == null) {
+                                        Toast.makeText(
+                                            context,
+                                            "Error al obtener URI del archivo",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        return@Button
+                                    }
+                                    
                                 pendingCaptureUri = uri
+                                    
+                                    // Verificar permiso de cámara
+                                    when {
+                                        ContextCompat.checkSelfPermission(
+                                            context,
+                                            android.Manifest.permission.CAMERA
+                                        ) == PackageManager.PERMISSION_GRANTED -> {
+                                            // Permiso ya otorgado, tomar foto
                                 takePictureLauncher.launch(uri)
+                                        }
+                                        else -> {
+                                            // Solicitar permiso
+                                            requestPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    Toast.makeText(
+                                        context,
+                                        "Error al preparar la cámara: ${e.message}",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
                             }) {
                                 Icon(Icons.Default.CameraAlt, contentDescription = "Tomar Foto")
                                 Spacer(Modifier.width(8.dp))

@@ -21,7 +21,8 @@ import com.example.myapplicationv.viewmodel.AuthViewModel
 fun LoginScreenVm(
     vm: AuthViewModel,
     onLoginOkNavigate: (Boolean) -> Unit, // (isAdmin)
-    onGoRegister: () -> Unit
+    onGoRegister: () -> Unit,
+    onForgotPassword: () -> Unit = {}
 ) {
     val state by vm.login.collectAsStateWithLifecycle()
     val currentUser by vm.currentUser.collectAsStateWithLifecycle()
@@ -44,7 +45,8 @@ fun LoginScreenVm(
         onEmailChange = vm::onLoginEmailChange,
         onPassChange = vm::onLoginPassChange,
         onSubmit = vm::submitLogin,
-        onGoRegister = onGoRegister
+        onGoRegister = onGoRegister,
+        onForgotPassword = onForgotPassword
     )
 }
 
@@ -60,7 +62,8 @@ private fun LoginScreen(
     onEmailChange: (String) -> Unit,
     onPassChange: (String) -> Unit,
     onSubmit: () -> Unit,
-    onGoRegister: () -> Unit
+    onGoRegister: () -> Unit,
+    onForgotPassword: () -> Unit = {}
 ) {
     val bg = MaterialTheme.colorScheme.secondaryContainer
     var showPass by remember { mutableStateOf(false) }
@@ -148,7 +151,20 @@ private fun LoginScreen(
                 )
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(8.dp))
+
+            // ---------- ENLACE OLVIDÉ MI CONTRASEÑA ----------
+            TextButton(
+                onClick = onForgotPassword,
+                modifier = Modifier.align(Alignment.End)
+            ) {
+                Text(
+                    text = "¿Olvidaste tu contraseña?",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
 
             // ---------- BOTÓN ENTRAR ----------
             Button(

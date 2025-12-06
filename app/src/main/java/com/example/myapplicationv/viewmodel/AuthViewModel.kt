@@ -9,9 +9,11 @@ import com.example.myapplicationv.data.local.user.ClientEntity
 import com.example.myapplicationv.data.local.resena.ResenaEntity
 import com.example.myapplicationv.data.repository.VetRepository
 import com.example.myapplicationv.domain.validation.*
+import com.example.myapplicationv.domain.error.ErrorMessages
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.util.Date
+import android.util.Log
 
 // --------------------------------------------------------------------------------------
 // --- DATA CLASSES DE ESTADO (NUEVAS: RESEÑAS) ---
@@ -36,6 +38,7 @@ data class ProfileUiState(
     val phone: String = "",
     val address: String = "",
     val emergencyContact: String = "",
+    val currentPassword: String = "",
     val newPassword: String = "",
     val confirmPassword: String = "",
     val isLoading: Boolean = false,
@@ -293,7 +296,7 @@ class AuthViewModel(
                 _login.update { it.copy(isSubmitting = false, success = true) }
                 loadProfile()
             } else {
-                val error = result.exceptionOrNull()?.message ?: "Error de autenticación"
+                val error = ErrorMessages.getFriendlyMessage(result.exceptionOrNull())
                 _sessionState.update { it.copy(loginMessage = error, showMessage = true) }
                 _login.update { it.copy(isSubmitting = false, success = false, errorMsg = error) }
             }
@@ -373,23 +376,28 @@ class AuthViewModel(
                         phone = phone,
                         address = address,
                         emergencyContact = emergency,
-                        successMessage = "Información actualizada con éxito"
+                        successMessage = ErrorMessages.Success.PROFILE_UPDATED
                     )
                 }
             } else {
                 _profile.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = result.exceptionOrNull()?.message
+                        errorMessage = ErrorMessages.getFriendlyMessage(result.exceptionOrNull())
                     )
                 }
             }
         }
     }
 
-    fun changePassword(newPass: String, confirm: String) {
+    fun changePassword(currentPass: String, newPass: String, confirm: String) {
+        if (currentPass.isBlank()) {
+            _profile.update { it.copy(errorMessage = ErrorMessages.Validation.CURRENT_PASSWORD_REQUIRED) }
+            return
+        }
+
         if (newPass != confirm) {
-            _profile.update { it.copy(errorMessage = "Las contraseñas no coinciden") }
+            _profile.update { it.copy(errorMessage = ErrorMessages.Validation.PASSWORDS_DONT_MATCH) }
             return
         }
 
@@ -397,12 +405,13 @@ class AuthViewModel(
             val id = _currentUser.value.clientId
             _profile.update { it.copy(isLoading = true, successMessage = null, errorMessage = null) }
 
-            val result = repository.changePassword(id, newPass)
+            val result = repository.changePassword(id, currentPass, newPass)
             if (result.isSuccess) {
                 _profile.update {
                     it.copy(
                         isLoading = false,
-                        successMessage = "Contraseña actualizada correctamente",
+                        successMessage = ErrorMessages.Success.PASSWORD_CHANGED,
+                        currentPassword = "",
                         newPassword = "",
                         confirmPassword = ""
                     )
@@ -411,7 +420,30 @@ class AuthViewModel(
                 _profile.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = result.exceptionOrNull()?.message
+                        errorMessage = ErrorMessages.getFriendlyMessage(result.exceptionOrNull())
+                    )
+                }
+            }
+        }
+    }
+
+    fun forgotPassword(email: String) {
+        viewModelScope.launch {
+            _profile.update { it.copy(isLoading = true, successMessage = null, errorMessage = null) }
+            
+            val result = repository.forgotPassword(email)
+            if (result.isSuccess) {
+                _profile.update {
+                    it.copy(
+                        isLoading = false,
+                        successMessage = ErrorMessages.Success.PASSWORD_RECOVERY_SENT
+                    )
+                }
+            } else {
+                _profile.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = ErrorMessages.getFriendlyMessage(result.exceptionOrNull())
                     )
                 }
             }
@@ -449,7 +481,6 @@ class AuthViewModel(
                 }
             }
         }
-    }
 
     fun loadAllPets() {
         viewModelScope.launch {
@@ -518,7 +549,7 @@ class AuthViewModel(
                 _showRegistrationSuccess.value = true // Mostrar alerta de éxito
                 clearRegistrationForm() // Limpiar formulario
             } else {
-                val error = result.exceptionOrNull()?.message ?: "No se pudo registrar"
+                val error = ErrorMessages.getFriendlyMessage(result.exceptionOrNull())
                 _register.update { it.copy(isSubmitting = false, success = false, errorMsg = error) }
             }
         }
@@ -541,10 +572,12 @@ class AuthViewModel(
         nombre: String,
         especie: String,
         raza: String,
+        genero: String?,
         fechaNacimiento: String?,
         peso: Double?,
         color: String?,
-        notasMedicas: String?
+        notasMedicas: String?,
+        imagenUri: String? = null
     ) {
         val clientId = _currentUser.value.clientId
         if (clientId == 0L) {
@@ -559,21 +592,24 @@ class AuthViewModel(
                 nombre = nombre,
                 especie = especie,
                 raza = raza,
+                genero = genero,
                 fechaNacimiento = fechaNacimiento,
                 peso = peso,
                 color = color,
-                notasMedicas = notasMedicas
+                notasMedicas = notasMedicas,
+                imagenUri = imagenUri
             )
 
             if (result.isFailure) {
                 _pets.update {
                     it.copy(
-                        error = result.exceptionOrNull()?.message ?: "Error al agregar mascota.",
+                        error = ErrorMessages.getFriendlyMessage(result.exceptionOrNull()) ?: "Error al agregar mascota.",
                         isLoading = false
                     )
                 }
             } else {
-                _pets.update { it.copy(isLoading = false) }
+                // Limpiar error si fue exitoso
+                _pets.update { it.copy(isLoading = false, error = null) }
             }
         }
     }
@@ -586,6 +622,20 @@ class AuthViewModel(
                 _selectedPet.update { it.copy(pet = pet, isLoading = false) }
             } catch (e: Exception) {
                 _selectedPet.update { it.copy(error = "No se pudo cargar la mascota.", isLoading = false) }
+            }
+        }
+    }
+
+    fun updatePetImage(petId: Long, imagenUri: String?) {
+        viewModelScope.launch {
+            try {
+                repository.updatePetImageUri(petId, imagenUri)
+                // Recargar la mascota para actualizar el estado
+                loadPetById(petId)
+            } catch (e: Exception) {
+                _selectedPet.update { 
+                    it.copy(error = ErrorMessages.getFriendlyMessage(e) ?: "Error al actualizar la imagen.") 
+                }
             }
         }
     }
@@ -624,9 +674,12 @@ class AuthViewModel(
             if (result.isFailure) {
                 _appointments.update {
                     it.copy(
-                        error = result.exceptionOrNull()?.message ?: "Error al agregar la cita."
+                        error = ErrorMessages.getFriendlyMessage(result.exceptionOrNull()) ?: "Error al agregar la cita."
                     )
                 }
+            } else {
+                // Limpiar error si fue exitoso
+                _appointments.update { it.copy(error = null) }
             }
         }
     }
@@ -758,6 +811,7 @@ class AuthViewModel(
     fun onProfilePhoneChange(value: String) = _profile.update { it.copy(phone = value, errorMessage = null) }
     fun onProfileAddressChange(value: String) = _profile.update { it.copy(address = value, errorMessage = null) }
     fun onProfileEmergencyContactChange(value: String) = _profile.update { it.copy(emergencyContact = value, errorMessage = null) }
+    fun onProfileCurrentPasswordChange(value: String) = _profile.update { it.copy(currentPassword = value, errorMessage = null) }
     fun onProfileNewPasswordChange(value: String) = _profile.update { it.copy(newPassword = value, errorMessage = null) }
     fun onProfileConfirmPasswordChange(value: String) = _profile.update { it.copy(confirmPassword = value, errorMessage = null) }
 }

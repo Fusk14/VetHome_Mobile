@@ -25,6 +25,9 @@ interface PetDao {
     @Query("UPDATE pets SET peso = :nuevoPeso WHERE id = :petId")
     suspend fun updateWeight(petId: Long, nuevoPeso: Double)
 
+    @Query("UPDATE pets SET imagenUri = :imagenUri WHERE id = :petId")
+    suspend fun updateImageUri(petId: Long, imagenUri: String?)
+
     @Query("DELETE FROM pets WHERE id = :petId")
     suspend fun deleteById(petId: Long)
 
