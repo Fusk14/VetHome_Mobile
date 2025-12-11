@@ -28,7 +28,7 @@ import com.example.myapplicationv.data.local.appointment.Converters
         AppointmentEntity::class,
         ResenaEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

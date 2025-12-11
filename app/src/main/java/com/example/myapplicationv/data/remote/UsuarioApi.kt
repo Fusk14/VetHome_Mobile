@@ -9,6 +9,7 @@ import retrofit2.http.Path
 import com.example.myapplicationv.data.remote.dto.UsuarioDto
 import com.example.myapplicationv.data.remote.dto.LoginRequestDto
 import com.example.myapplicationv.data.remote.dto.RegisterRequestDto
+import com.example.myapplicationv.data.remote.dto.ForgotPasswordRequestDto
 
 // interfaz con endpoints del servicio de usuarios
 interface UsuarioApi {
@@ -19,7 +20,7 @@ interface UsuarioApi {
     
     // Endpoint para registrar usuario: POST /api/auth/register
     @POST("api/auth/register")
-    suspend fun register(@Body request: RegisterRequestDto): UsuarioDto
+    suspend fun register(@Body request: RegisterRequestDto): retrofit2.Response<UsuarioDto>
     
     // Endpoint para obtener todos los usuarios: GET /api/usuarios
     @GET("api/usuarios")
@@ -32,6 +33,10 @@ interface UsuarioApi {
     // Endpoint para obtener usuario por correo: GET /api/usuarios/correo/{correo}
     @GET("api/usuarios/correo/{correo}")
     suspend fun getUsuarioByCorreo(@Path("correo") correo: String): UsuarioDto
+    
+    // Endpoint para recuperar contraseña: POST /api/auth/forgot-password
+    @POST("api/auth/forgot-password")
+    suspend fun forgotPassword(@Body request: ForgotPasswordRequestDto): retrofit2.Response<okhttp3.ResponseBody>
 }
 
 

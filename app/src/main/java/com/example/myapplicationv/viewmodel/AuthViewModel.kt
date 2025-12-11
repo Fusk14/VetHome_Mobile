@@ -200,56 +200,94 @@ class AuthViewModel(
 
     init {
         viewModelScope.launch {
-            currentUser.collect { user ->
-                if (user.clientId != 0L) {
-                    launch {
-                        repository.getPetsByOwner(user.clientId).collect { petsList ->
-                            _pets.update { it.copy(pets = petsList, isLoading = false) }
-                            _currentUser.update { it.copy(petsCount = petsList.size) }
-                        }
-                    }
-                    launch {
-                        repository.getAppointmentsByOwner(user.clientId).collect { appointmentsList ->
-                            _appointments.update { it.copy(appointments = appointmentsList, isLoading = false) }
-                        }
-                    }
+            try {
+                currentUser.collect { user ->
+                    try {
+                        if (user.clientId != 0L) {
+                            launch {
+                                try {
+                                    repository.getPetsByOwner(user.clientId).collect { petsList ->
+                                        _pets.update { it.copy(pets = petsList, isLoading = false) }
+                                        _currentUser.update { it.copy(petsCount = petsList.size) }
+                                    }
+                                } catch (e: Exception) {
+                                    println("Error loading pets: ${e.message}")
+                                }
+                            }
+                            launch {
+                                try {
+                                    repository.getAppointmentsByOwner(user.clientId).collect { appointmentsList ->
+                                        _appointments.update { it.copy(appointments = appointmentsList, isLoading = false) }
+                                    }
+                                } catch (e: Exception) {
+                                    println("Error loading appointments: ${e.message}")
+                                }
+                            }
 
-                    launch {
-                        loadResenas()
+                            launch {
+                                try {
+                                    loadResenas()
+                                } catch (e: Exception) {
+                                    println("Error loading resenas: ${e.message}")
+                                }
+                            }
+                        } else {
+                            _pets.update { PetsUiState() }
+                            _appointments.update { AppointmentsUiState() }
+                            _profile.update { ProfileUiState() }
+                            _resenas.update { ResenasUiState() }
+                        }
+                    } catch (e: Exception) {
+                        println("Error in currentUser collect: ${e.message}")
                     }
-                } else {
-                    _pets.update { PetsUiState() }
-                    _appointments.update { AppointmentsUiState() }
-                    _profile.value = ProfileUiState()
-                    _resenas.value = ResenasUiState()
                 }
+            } catch (e: Exception) {
+                println("Error initializing AuthViewModel: ${e.message}")
             }
         }
 
-        checkUserSession()
+        try {
+            checkUserSession()
+        } catch (e: Exception) {
+            println("Error checking user session: ${e.message}")
+        }
     }
 
     //LÓGICA DE SESIÓN
     private fun checkUserSession() {
         viewModelScope.launch {
-            val loggedIn = userPreferences.isLoggedIn.first()
-            if (loggedIn) {
-                val email = userPreferences.userEmail.first()
-                val name = userPreferences.userName.first()
-                val id = userPreferences.userId.first()
-                val role = userPreferences.userRole.first()
+            try {
+                val loggedIn = userPreferences.isLoggedIn.first()
+                if (loggedIn) {
+                    try {
+                        val email = userPreferences.userEmail.first()
+                        val name = userPreferences.userName.first()
+                        val id = userPreferences.userId.first()
+                        val role = userPreferences.userRole.first()
 
-                _currentUser.value = ClientUiState(
-                    clientId = id.toLongOrNull() ?: 0L,
-                    name = name,
-                    email = email,
-                    role = role
-                )
-                _userRole.value = role
-                loadProfile()
+                        _currentUser.value = ClientUiState(
+                            clientId = id.toLongOrNull() ?: 0L,
+                            name = name,
+                            email = email,
+                            role = role
+                        )
+                        _userRole.value = role
+                        try {
+                            loadProfile()
+                        } catch (e: Exception) {
+                            println("Error loading profile: ${e.message}")
+                        }
+                    } catch (e: Exception) {
+                        println("Error reading user preferences: ${e.message}")
+                    }
+                }
+                _isUserLoggedIn.value = loggedIn
+                _sessionState.update { it.copy(isLoggedIn = loggedIn) }
+            } catch (e: Exception) {
+                println("Error checking user session: ${e.message}")
+                _isUserLoggedIn.value = false
+                _sessionState.update { it.copy(isLoggedIn = false) }
             }
-            _isUserLoggedIn.value = loggedIn
-            _sessionState.update { it.copy(isLoggedIn = loggedIn) }
         }
     }
 
@@ -338,22 +376,34 @@ class AuthViewModel(
 
     fun loadProfile() {
         viewModelScope.launch {
-            val userId = _currentUser.value.clientId
-            if (userId == 0L) return@launch
+            try {
+                val userId = _currentUser.value.clientId
+                if (userId == 0L) return@launch
 
-            _profile.update { it.copy(isLoading = true, successMessage = null, errorMessage = null) }
+                _profile.update { it.copy(isLoading = true, successMessage = null, errorMessage = null) }
 
-            val client = repository.getClientById(userId)
-            client?.let {
-                _profile.value = ProfileUiState(
-                    name = it.name,
-                    email = it.email,
-                    phone = it.phone,
-                    address = it.address ?: "",
-                    emergencyContact = it.emergencyContact ?: "",
-                    isLoading = false
-                )
-            } ?: _profile.update { it.copy(isLoading = false, errorMessage = "No se encontró el perfil.") }
+                try {
+                    val client = repository.getClientById(userId)
+                    client?.let {
+                        _profile.update {
+                            ProfileUiState(
+                                name = it.name,
+                                email = it.email,
+                                phone = it.phone,
+                                address = it.address ?: "",
+                                emergencyContact = it.emergencyContact ?: "",
+                                isLoading = false
+                            )
+                        }
+                    } ?: _profile.update { it.copy(isLoading = false, errorMessage = "No se encontró el perfil.") }
+                } catch (e: Exception) {
+                    println("Error loading profile: ${e.message}")
+                    _profile.update { it.copy(isLoading = false, errorMessage = "Error al cargar el perfil: ${e.message}") }
+                }
+            } catch (e: Exception) {
+                println("Error in loadProfile: ${e.message}")
+                _profile.update { it.copy(isLoading = false, errorMessage = "Error al cargar el perfil") }
+            }
         }
     }
 
@@ -389,7 +439,12 @@ class AuthViewModel(
         }
     }
 
-    fun changePassword(newPass: String, confirm: String) {
+    fun changePassword(currentPass: String, newPass: String, confirm: String) {
+        if (currentPass.isBlank()) {
+            _profile.update { it.copy(errorMessage = "Debe ingresar su contraseña actual") }
+            return
+        }
+        
         if (newPass != confirm) {
             _profile.update { it.copy(errorMessage = "Las contraseñas no coinciden") }
             return
@@ -399,7 +454,7 @@ class AuthViewModel(
             val id = _currentUser.value.clientId
             _profile.update { it.copy(isLoading = true, successMessage = null, errorMessage = null) }
 
-            val result = repository.changePassword(id, newPass)
+            val result = repository.changePassword(id, currentPass, newPass)
             if (result.isSuccess) {
                 _profile.update {
                     it.copy(
@@ -414,6 +469,29 @@ class AuthViewModel(
                     it.copy(
                         isLoading = false,
                         errorMessage = result.exceptionOrNull()?.message
+                    )
+                }
+            }
+        }
+    }
+    
+    fun forgotPassword(email: String) {
+        viewModelScope.launch {
+            _profile.update { it.copy(isLoading = true, successMessage = null, errorMessage = null) }
+            
+            val result = repository.forgotPassword(email)
+            if (result.isSuccess) {
+                _profile.update {
+                    it.copy(
+                        isLoading = false,
+                        successMessage = "Se han enviado las instrucciones para recuperar tu contraseña a tu correo electrónico."
+                    )
+                }
+            } else {
+                _profile.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = result.exceptionOrNull()?.message ?: "Error al solicitar recuperación de contraseña"
                     )
                 }
             }
@@ -520,7 +598,8 @@ class AuthViewModel(
                 _showRegistrationSuccess.value = true // Mostrar alerta de éxito
                 clearRegistrationForm() // Limpiar formulario
             } else {
-                val error = result.exceptionOrNull()?.message ?: "No se pudo registrar"
+                val exception = result.exceptionOrNull()
+                val error = exception?.message ?: "No se pudo completar el registro. Por favor, intenta nuevamente."
                 _register.update { it.copy(isSubmitting = false, success = false, errorMsg = error) }
             }
         }
@@ -677,18 +756,42 @@ class AuthViewModel(
         if (userId == 0L) return
 
         viewModelScope.launch {
-            _resenas.update { it.copy(isLoading = true, error = null) }
+            try {
+                _resenas.update { it.copy(isLoading = true, error = null) }
 
-            // SINCRONIZAR ANTES DE CARGAR
-            repository.sincronizarResenasPendientes()
+                // SINCRONIZAR ANTES DE CARGAR
+                try {
+                    repository.sincronizarResenasPendientes()
+                } catch (e: Exception) {
+                    println("Error sincronizando reseñas: ${e.message}")
+                }
 
-            // Luego cargar las reseñas
-            // Recolectar Flow del repositorio, que ahora debe incluir las recién sincronizadas
-            repository.obtenerResenasPorUsuario(userId).collect { resenasList ->
+                // Luego cargar las reseñas
+                // Recolectar Flow del repositorio, que ahora debe incluir las recién sincronizadas
+                try {
+                    repository.obtenerResenasPorUsuario(userId).collect { resenasList ->
+                        _resenas.update {
+                            it.copy(
+                                resenas = resenasList,
+                                isLoading = false
+                            )
+                        }
+                    }
+                } catch (e: Exception) {
+                    println("Error cargando reseñas: ${e.message}")
+                    _resenas.update {
+                        it.copy(
+                            isLoading = false,
+                            error = "Error al cargar reseñas: ${e.message}"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                println("Error en loadResenas: ${e.message}")
                 _resenas.update {
                     it.copy(
-                        resenas = resenasList,
-                        isLoading = false
+                        isLoading = false,
+                        error = "Error al cargar reseñas"
                     )
                 }
             }

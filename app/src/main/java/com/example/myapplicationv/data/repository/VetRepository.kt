@@ -4,6 +4,7 @@ import java.time.LocalDate
 import java.time.Period
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import java.io.InputStream
 import okhttp3.MediaType.Companion.toMediaType
 
@@ -19,8 +20,11 @@ import com.example.myapplicationv.data.remote.RemoteModule
 import com.example.myapplicationv.data.remote.*
 import com.example.myapplicationv.data.remote.dto.*
 import com.example.myapplicationv.domain.validation.*
+import com.example.myapplicationv.domain.error.ErrorMessages
+import retrofit2.HttpException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.first
 import java.util.Date
 
 class VetRepository(
@@ -82,6 +86,19 @@ class VetRepository(
 
             Result.success(clientEntity)
 
+        } catch (e: retrofit2.HttpException) {
+            println("Falló microservicio (HTTP ${e.code()}): ${e.message}")
+            // Intentar con base local como fallback
+            println("🔍 Intentando login local para: $email")
+            val client = clientDao.login(email, password)
+
+            if (client != null) {
+                println(" Login exitoso local: ${client.correo}")
+                Result.success(client)
+            } else {
+                println(" Login fallido - Usuario no encontrado o credenciales incorrectas")
+                Result.failure(IllegalArgumentException(ErrorMessages.getFriendlyMessage(e)))
+            }
         } catch (e: Exception) {
             println("Falló microservicio: ${e.message}")
 
@@ -94,7 +111,7 @@ class VetRepository(
                 Result.success(client)
             } else {
                 println(" Login fallido - Usuario no encontrado o credenciales incorrectas")
-                Result.failure(IllegalArgumentException("Credenciales inválidas"))
+                Result.failure(IllegalArgumentException(ErrorMessages.getFriendlyMessage(e)))
             }
         }
     }
@@ -138,26 +155,55 @@ class VetRepository(
                 rolNombre = "CLIENTE"
             )
 
-            val usuarioDto = usuarioApi.register(registerRequest)
+            val response = usuarioApi.register(registerRequest)
+            
+            if (response.isSuccessful) {
+                val usuarioDto = response.body()
+                if (usuarioDto == null) {
+                    return Result.failure(IllegalStateException("No se recibió respuesta del servidor"))
+                }
 
-            val clientEntity = ClientEntity(
-                id = usuarioDto.id ?: 0L,
-                rut = usuarioDto.rut,
-                nombre = usuarioDto.nombre,
-                apellido = usuarioDto.apellido,
-                correo = usuarioDto.correo,
-                telefono = usuarioDto.telefono,
-                contrasena = password,
-                rolNombre = usuarioDto.rol?.nombre ?: "CLIENTE",
-                address = address,
-                emergencyContact = emergencyContact
-            )
+                val clientEntity = ClientEntity(
+                    id = usuarioDto.id ?: 0L,
+                    rut = usuarioDto.rut,
+                    nombre = usuarioDto.nombre,
+                    apellido = usuarioDto.apellido,
+                    correo = usuarioDto.correo,
+                    telefono = usuarioDto.telefono,
+                    contrasena = password,
+                    rolNombre = usuarioDto.rol?.nombre ?: "CLIENTE",
+                    address = address,
+                    emergencyContact = emergencyContact
+                )
 
-            clientDao.insert(clientEntity)
-            Result.success(clientEntity.id)
+                clientDao.insert(clientEntity)
+                Result.success(clientEntity.id)
+            } else {
+                // Manejar errores HTTP
+                val errorBody = response.errorBody()?.string() ?: ""
+                val errorMessage = when (response.code()) {
+                    400 -> {
+                        // Intentar extraer el mensaje del servidor
+                        when {
+                            errorBody.contains("RUT", ignoreCase = true) -> 
+                                "El RUT ya está registrado. Por favor, usa otro correo electrónico."
+                            errorBody.contains("correo", ignoreCase = true) || errorBody.contains("email", ignoreCase = true) -> 
+                                "El correo electrónico ya está registrado. Por favor, usa otro correo."
+                            errorBody.contains("ya está registrado", ignoreCase = true) -> 
+                                "Ya existe un usuario con estos datos. Por favor, verifica la información."
+                            else -> 
+                                ErrorMessages.getFriendlyMessage(retrofit2.HttpException(response))
+                        }
+                    }
+                    else -> ErrorMessages.getFriendlyMessage(retrofit2.HttpException(response))
+                }
+                Result.failure(IllegalStateException(errorMessage))
+            }
 
+        } catch (e: retrofit2.HttpException) {
+            Result.failure(IllegalStateException(ErrorMessages.getFriendlyMessage(e)))
         } catch (e: Exception) {
-            Result.failure(IllegalStateException("Error de conexión: ${e.message}"))
+            Result.failure(IllegalStateException(ErrorMessages.getFriendlyMessage(e)))
         }
     }
 
@@ -205,13 +251,42 @@ class VetRepository(
         return Result.success(Unit)
     }
 
-    suspend fun changePassword(clientId: Long, newPassword: String): Result<Unit> {
+    suspend fun changePassword(clientId: Long, currentPassword: String, newPassword: String): Result<Unit> {
+        // Validar que la contraseña actual sea correcta
+        val client = clientDao.getById(clientId)
+        if (client == null) {
+            return Result.failure(IllegalArgumentException("Usuario no encontrado"))
+        }
+        
+        if (client.contrasena != currentPassword) {
+            return Result.failure(IllegalArgumentException("La contraseña actual es incorrecta"))
+        }
+        
         val passError = validateStrongPassword(newPassword)
         if (passError != null)
             return Result.failure(IllegalArgumentException(passError))
 
         clientDao.updatePassword(clientId, newPassword)
         return Result.success(Unit)
+    }
+    
+    suspend fun forgotPassword(email: String): Result<Unit> {
+        val emailError = validateEmail(email)
+        if (emailError != null)
+            return Result.failure(IllegalArgumentException(emailError))
+        
+        return try {
+            val request = ForgotPasswordRequestDto(correo = email)
+            val response = usuarioApi.forgotPassword(request)
+            if (response.isSuccessful) {
+                Result.success(Unit)
+            } else {
+                val errorBody = response.errorBody()?.string() ?: "Error desconocido"
+                Result.failure(IllegalStateException("Error al solicitar recuperación: ${response.code()} - $errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     //mascotas
@@ -317,18 +392,23 @@ class VetRepository(
     
     suspend fun uploadPetPhotoBytes(petId: Long, imageBytes: ByteArray): Result<Unit> {
         return try {
+            Log.d("VetRepository", "📤 Subiendo foto para mascota ID: $petId, tamaño: ${imageBytes.size} bytes")
             val mediaType = "image/jpeg".toMediaType()
             val requestFile = okhttp3.RequestBody.create(mediaType, imageBytes)
             val fotoPart = okhttp3.MultipartBody.Part.createFormData("foto", "pet_photo.jpg", requestFile)
             
             val response = mascotaApi.uploadPetPhoto(petId, fotoPart)
+            Log.d("VetRepository", "📥 Respuesta del servidor: código ${response.code()}, éxito: ${response.isSuccessful}")
             if (response.isSuccessful) {
+                Log.d("VetRepository", "✅ Foto subida exitosamente para mascota ID: $petId")
                 Result.success(Unit)
             } else {
                 val errorBody = response.errorBody()?.string() ?: "Sin detalles"
+                Log.e("VetRepository", "❌ Error al subir foto: ${response.code()} - $errorBody")
                 Result.failure(IllegalStateException("Error al subir foto: ${response.code()} - $errorBody"))
             }
         } catch (e: Exception) {
+            Log.e("VetRepository", "❌ Excepción al subir foto: ${e.message}", e)
             Result.failure(e)
         }
     }
@@ -428,24 +508,60 @@ class VetRepository(
 
     //reseñas
 
-    // FUNCIÓN PARA BUSCAR VETERINARIO VÁLIDO (MOCK)
-    // Se mantiene dentro de la clase para acceder a la API/DAO si es necesario en el futuro.
-    // Actualmente, es un mock que devuelve un ID fijo (2L).
+    // FUNCIÓN PARA BUSCAR VETERINARIO VÁLIDO
+    // Busca en la base de datos local primero, luego en el servidor si es necesario
     private suspend fun obtenerVeterinarioValido(): Long {
-        // Prueba con estos IDs comunes que podrían ser veterinarios
-        val posiblesVeterinarios = listOf(2L, 3L, 4L, 5L, 10L, 100L)
-
+        // Primero intentar buscar en la base de datos local
+        try {
+            val todosLosClientes = clientDao.getAllClients()
+            val clientes = todosLosClientes.first()
+            
+            val veterinarioLocal = clientes.firstOrNull { 
+                it.rolNombre.equals("VETERINARIO", ignoreCase = true) 
+            }
+            
+            if (veterinarioLocal != null) {
+                Log.d("VetRepository", "✅ Veterinario encontrado localmente: ID ${veterinarioLocal.id}")
+                return veterinarioLocal.id
+            }
+        } catch (e: Exception) {
+            Log.w("VetRepository", "Error buscando veterinario localmente: ${e.message}")
+        }
+        
+        // Si no se encuentra localmente, buscar en el servidor
+        try {
+            Log.d("VetRepository", "🔍 Buscando veterinario en el servidor...")
+            val usuarios = usuarioApi.getAllUsuarios()
+            
+            val veterinario = usuarios.firstOrNull { usuario ->
+                usuario.rol?.nombre?.equals("VETERINARIO", ignoreCase = true) == true
+            }
+            
+            if (veterinario != null && veterinario.id != null) {
+                Log.d("VetRepository", "✅ Veterinario encontrado en servidor: ID ${veterinario.id}")
+                return veterinario.id!!
+            }
+        } catch (e: Exception) {
+            Log.e("VetRepository", "❌ Error buscando veterinario en servidor: ${e.message}")
+        }
+        
+        // Fallback: intentar con IDs comunes que podrían ser veterinarios
+        val posiblesVeterinarios = listOf(1L, 2L, 3L, 4L, 5L, 10L)
         for (id in posiblesVeterinarios) {
             try {
-                // Lógica de validación real (Ej: clientDao.getById(id) y verificar rol)
-                // Por ahora, devolvemos uno fijo para probar
-                return 2L
+                val usuario = usuarioApi.getUsuarioById(id)
+                if (usuario.rol?.nombre?.equals("VETERINARIO", ignoreCase = true) == true) {
+                    Log.d("VetRepository", "✅ Veterinario encontrado por ID: $id")
+                    return id
+                }
             } catch (e: Exception) {
                 continue
             }
         }
-        // Fallback a un ID conocido que debe ser un veterinario en el backend
-        return 2L
+        
+        // Si no se encuentra ningún veterinario, usar un ID por defecto y dejar que el servidor valide
+        Log.w("VetRepository", "⚠️ No se encontró veterinario válido, usando ID por defecto: 1L")
+        return 1L
     }
 
     // FUNCIÓN CREAR RESEÑA MODIFICADA
@@ -468,21 +584,20 @@ class VetRepository(
         if (comentario.length > 500)
             return Result.failure(IllegalArgumentException("El comentario es demasiado largo"))
 
+        val veterinarioId = obtenerVeterinarioValido()
+        
         return try {
-            // BUSCAR UN VETERINARIO VÁLIDO
-            val veterinarioId = obtenerVeterinarioValido()
-
             val dto = ResenaDto(
                 idCliente = usuarioId,
-                idVeterinario = veterinarioId, // ID de un veterinario real (o mock)
+                idVeterinario = veterinarioId,
                 calificacion = calificacion,
                 comentario = comentario
             )
 
-            println("Enviando reseña al servidor: Cliente=$usuarioId, Veterinario=$veterinarioId")
+            Log.d("VetRepository", "📤 Enviando reseña al servidor: Cliente=$usuarioId, Veterinario=$veterinarioId")
 
             val creada = resenaApi.createResena(dto)
-            println(" Reseña creada exitosamente en servidor: ${creada.id}")
+            Log.d("VetRepository", "✅ Reseña creada exitosamente en servidor: ${creada.id}")
 
             val entity = ResenaEntity(
                 id = creada.id ?: 0L,
@@ -499,15 +614,31 @@ class VetRepository(
             resenaDao.insertar(entity)
             Result.success(entity.id)
 
-        } catch (e: Exception) {
-            println("Error creando reseña en servidor: ${e.message}")
-            e.printStackTrace()
-
+        } catch (e: retrofit2.HttpException) {
+            val errorBody = try {
+                e.response()?.errorBody()?.string() ?: e.message
+            } catch (ex: Exception) {
+                e.message ?: "Error desconocido"
+            }
+            Log.e("VetRepository", "❌ Error HTTP al crear reseña: ${e.code()} - $errorBody")
+            
+            // Si es un error 400, puede ser un problema de validación (roles, etc.)
+            if (e.code() == 400) {
+                val friendlyMessage = ErrorMessages.getFriendlyMessage(e)
+                val errorBodyStr = errorBody ?: ""
+                val finalMessage = if (errorBodyStr.isNotBlank() && !errorBodyStr.contains(friendlyMessage)) {
+                    "$friendlyMessage: $errorBodyStr"
+                } else {
+                    friendlyMessage
+                }
+                return Result.failure(IllegalArgumentException(finalMessage))
+            }
+            
             // Guardar localmente como no sincronizada (FALLBACK)
             val localId = resenaDao.insertar(
                 ResenaEntity(
                     idCliente = usuarioId,
-                    idVeterinario = 1L, // Valor temporal si falla la conexión
+                    idVeterinario = veterinarioId,
                     mascotaId = mascotaId,
                     mascotaNombre = mascotaNombre,
                     calificacion = calificacion,
@@ -516,7 +647,25 @@ class VetRepository(
                     sincronizado = false // ❌ NO SINCRONIZADA
                 )
             )
-            println("Reseña guardada localmente con ID: $localId")
+            Log.d("VetRepository", "Reseña guardada localmente con ID: $localId")
+            Result.success(localId)
+        } catch (e: Exception) {
+            Log.e("VetRepository", "❌ Error inesperado al crear reseña: ${e.message}", e)
+
+            // Guardar localmente como no sincronizada (FALLBACK)
+            val localId = resenaDao.insertar(
+                ResenaEntity(
+                    idCliente = usuarioId,
+                    idVeterinario = veterinarioId,
+                    mascotaId = mascotaId,
+                    mascotaNombre = mascotaNombre,
+                    calificacion = calificacion,
+                    comentario = comentario,
+                    fecha = fecha,
+                    sincronizado = false // ❌ NO SINCRONIZADA
+                )
+            )
+            Log.d("VetRepository", "Reseña guardada localmente con ID: $localId")
             Result.success(localId)
         }
     }
