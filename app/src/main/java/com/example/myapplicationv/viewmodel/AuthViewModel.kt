@@ -667,7 +667,8 @@ class AuthViewModel(
                         }
                     }
                 }
-                _pets.update { it.copy(isLoading = false) }
+                // Limpiar error y actualizar estado - las mascotas se recargarán automáticamente por el Flow
+                _pets.update { it.copy(isLoading = false, error = null) }
             }
         }
     }
@@ -722,24 +723,42 @@ class AuthViewModel(
     fun addAppointment(petId: Long, date: Date, reason: String) {
         val clientId = _currentUser.value.clientId
         if (clientId == 0L) {
-            _appointments.update { it.copy(error = "Error: Usuario no identificado.") }
+            _appointments.update { it.copy(error = "Error: Usuario no identificado.", isLoading = false) }
             return
         }
-        if (date.before(Date())) {
-            _appointments.update { it.copy(error = "No se pueden crear citas en fechas pasadas.") }
+        
+        // Validar que la fecha no sea en el pasado
+        // Comparar solo si la fecha seleccionada es anterior a ahora (con un margen de 1 minuto para evitar problemas de precisión)
+        val now = Date()
+        val oneMinuteAgo = Date(now.time - 60000) // 1 minuto antes para permitir selecciones muy cercanas
+        if (date.before(oneMinuteAgo)) {
+            _appointments.update { it.copy(error = "No se pueden crear citas en fechas pasadas.", isLoading = false) }
+            return
+        }
+
+        // Prevenir múltiples llamadas simultáneas
+        if (_appointments.value.isLoading) {
             return
         }
 
         viewModelScope.launch {
+            _appointments.update { it.copy(isLoading = true, error = null) }
+            
             val result = repository.addAppointment(
                 ownerId = clientId,
                 petId = petId,
                 date = date,
                 reason = reason
             )
-            if (result.isFailure) {
+            
+            if (result.isSuccess) {
+                // Limpiar error y recargar citas
+                _appointments.update { it.copy(isLoading = false, error = null) }
+                // Las citas se recargarán automáticamente por el Flow en init
+            } else {
                 _appointments.update {
                     it.copy(
+                        isLoading = false,
                         error = result.exceptionOrNull()?.message ?: "Error al agregar la cita."
                     )
                 }

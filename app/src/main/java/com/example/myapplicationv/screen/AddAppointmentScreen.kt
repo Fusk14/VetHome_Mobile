@@ -147,17 +147,17 @@ fun AddAppointmentScreen(
                 maxLines = 3
             )
 
+            // Estado para rastrear si se intentó agregar una cita
+            var appointmentSubmitted by remember { mutableStateOf(false) }
+            
             // Botón para agendar
             Button(
                 onClick = {
                     val pet = selectedPet
                     val date = selectedDate
-                    if (pet != null && date != null && reason.isNotBlank()) {
+                    if (pet != null && date != null && reason.isNotBlank() && !appointmentsState.isLoading) {
+                        appointmentSubmitted = true
                         vm.addAppointment(pet.id, date, reason)
-                        // Solo navegar si no hay error
-                        if (appointmentsState.error == null) {
-                            onAppointmentAdded()
-                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -170,6 +170,15 @@ fun AddAppointmentScreen(
                     )
                 } else {
                     Text("Agendar Cita")
+                }
+            }
+            
+            // Observar cambios en el estado para navegar cuando la cita se agregue exitosamente
+            LaunchedEffect(appointmentsState.isLoading, appointmentsState.error, appointmentSubmitted) {
+                // Si se intentó agregar una cita, terminó de cargar y no hay error, navegar
+                if (appointmentSubmitted && !appointmentsState.isLoading && appointmentsState.error == null) {
+                    appointmentSubmitted = false // Resetear el flag
+                    onAppointmentAdded()
                 }
             }
 

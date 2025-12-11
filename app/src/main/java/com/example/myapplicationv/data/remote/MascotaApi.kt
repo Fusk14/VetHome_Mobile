@@ -19,8 +19,9 @@ interface MascotaApi {
     suspend fun getMascotaById(@Path("id") id: Long): MascotaDto
     
     // Endpoint para crear una nueva mascota: POST /api/mascotas
+    // Retorna 201 Created según la documentación actualizada
     @POST("api/mascotas")
-    suspend fun createMascota(@Body mascota: MascotaDto): MascotaDto
+    suspend fun createMascota(@Body mascota: MascotaDto): retrofit2.Response<MascotaDto>
     
     // Endpoint para eliminar una mascota: DELETE /api/mascotas/{id}
     @DELETE("api/mascotas/{id}")

@@ -430,6 +430,8 @@ class VetRepository(
         } ?: 0
 
         return try {
+            Log.d("VetRepository", "📤 Intentando crear mascota: nombre=$nombre, especie=$especie, raza=$raza, ownerId=$ownerId")
+            
             val mascotaDto = MascotaDto(
                 idCliente = ownerId,
                 nombre = nombre,
@@ -438,39 +440,134 @@ class VetRepository(
                 edad = edad
             )
 
-            val creado = mascotaApi.createMascota(mascotaDto)
+            Log.d("VetRepository", "📤 Enviando DTO al microservicio: $mascotaDto")
+            val response = mascotaApi.createMascota(mascotaDto)
+            Log.d("VetRepository", "📥 Respuesta recibida: código=${response.code()}, éxito=${response.isSuccessful}")
+            
+            if (response.isSuccessful) {
+                val creado = response.body()
+                if (creado == null) {
+                    Log.w("VetRepository", "⚠️ Respuesta exitosa pero sin cuerpo, guardando localmente")
+                    val localId = petDao.insert(
+                        PetEntity(
+                            idCliente = ownerId,
+                            nombre = nombre,
+                            especie = especie,
+                            raza = raza,
+                            edad = edad,
+                            fechaNacimiento = fechaNacimiento,
+                            peso = peso,
+                            color = color,
+                            notasMedicas = notasMedicas
+                        )
+                    )
+                    return Result.success(localId)
+                }
+                
+                // Verificar que la mascota se creó correctamente
+                if (creado.id == null || creado.id == 0L) {
+                    Log.w("VetRepository", "⚠️ Mascota creada pero sin ID válido, guardando localmente")
+                    val localId = petDao.insert(
+                        PetEntity(
+                            idCliente = ownerId,
+                            nombre = nombre,
+                            especie = especie,
+                            raza = raza,
+                            edad = edad,
+                            fechaNacimiento = fechaNacimiento,
+                            peso = peso,
+                            color = color,
+                            notasMedicas = notasMedicas
+                        )
+                    )
+                    return Result.success(localId)
+                }
 
-            val petEntity = PetEntity(
-                id = creado.id ?: 0L,
-                idCliente = creado.idCliente,
-                nombre = creado.nombre,
-                especie = creado.especie,
-                raza = creado.raza,
-                edad = creado.edad,
-                fechaNacimiento = fechaNacimiento,
-                peso = peso,
-                color = color,
-                notasMedicas = notasMedicas
-            )
-
-            petDao.insert(petEntity)
-            Result.success(petEntity.id)
-
-        } catch (_: Exception) {
-            val localId = petDao.insert(
-                PetEntity(
-                    idCliente = ownerId,
-                    nombre = nombre,
-                    especie = especie,
-                    raza = raza,
-                    edad = edad,
+                val petEntity = PetEntity(
+                    id = creado.id,
+                    idCliente = creado.idCliente,
+                    nombre = creado.nombre,
+                    especie = creado.especie,
+                    raza = creado.raza,
+                    edad = creado.edad,
                     fechaNacimiento = fechaNacimiento,
                     peso = peso,
                     color = color,
                     notasMedicas = notasMedicas
                 )
-            )
-            Result.success(localId)
+
+                petDao.insert(petEntity)
+                Log.d("VetRepository", "✅ Mascota guardada exitosamente con ID: ${petEntity.id}")
+                Result.success(petEntity.id)
+            } else {
+                // Error HTTP del servidor
+                val errorBody = response.errorBody()?.string() ?: "Error desconocido"
+                Log.e("VetRepository", "❌ Error HTTP al crear mascota: ${response.code()} - $errorBody")
+                
+                // Guardar localmente como fallback
+                val localId = petDao.insert(
+                    PetEntity(
+                        idCliente = ownerId,
+                        nombre = nombre,
+                        especie = especie,
+                        raza = raza,
+                        edad = edad,
+                        fechaNacimiento = fechaNacimiento,
+                        peso = peso,
+                        color = color,
+                        notasMedicas = notasMedicas
+                    )
+                )
+                Log.d("VetRepository", "✅ Mascota guardada localmente con ID: $localId (fallback por error HTTP)")
+                Result.success(localId)
+            }
+
+        } catch (e: retrofit2.HttpException) {
+            Log.e("VetRepository", "❌ Error HTTP al crear mascota: ${e.code()} - ${e.message}", e)
+            // Guardar localmente como fallback
+            try {
+                val localId = petDao.insert(
+                    PetEntity(
+                        idCliente = ownerId,
+                        nombre = nombre,
+                        especie = especie,
+                        raza = raza,
+                        edad = edad,
+                        fechaNacimiento = fechaNacimiento,
+                        peso = peso,
+                        color = color,
+                        notasMedicas = notasMedicas
+                    )
+                )
+                Log.d("VetRepository", "✅ Mascota guardada localmente con ID: $localId (fallback por HttpException)")
+                Result.success(localId)
+            } catch (localError: Exception) {
+                Log.e("VetRepository", "❌ Error al guardar mascota localmente: ${localError.message}", localError)
+                Result.failure(IllegalStateException("Error al guardar mascota: ${e.message}"))
+            }
+        } catch (e: Exception) {
+            Log.e("VetRepository", "❌ Error al crear mascota en servidor: ${e.message}", e)
+            // Guardar localmente como fallback
+            try {
+                val localId = petDao.insert(
+                    PetEntity(
+                        idCliente = ownerId,
+                        nombre = nombre,
+                        especie = especie,
+                        raza = raza,
+                        edad = edad,
+                        fechaNacimiento = fechaNacimiento,
+                        peso = peso,
+                        color = color,
+                        notasMedicas = notasMedicas
+                    )
+                )
+                Log.d("VetRepository", "✅ Mascota guardada localmente con ID: $localId (fallback por excepción)")
+                Result.success(localId)
+            } catch (localError: Exception) {
+                Log.e("VetRepository", "❌ Error al guardar mascota localmente: ${localError.message}", localError)
+                Result.failure(IllegalStateException("Error al guardar mascota: ${e.message}"))
+            }
         }
     }
 
