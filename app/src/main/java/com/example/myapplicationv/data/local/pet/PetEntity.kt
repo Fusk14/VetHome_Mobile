@@ -20,11 +20,13 @@ data class PetEntity(
     val nombre: String,
     val especie: String? = null, // Ahora nullable como en el microservicio
     val raza: String? = null, // Ahora nullable como en el microservicio
+    val genero: String? = null,
     val edad: Int = 0, // Nuevo campo del microservicio
     // Campos adicionales para compatibilidad local (no están en el microservicio)
     val fechaNacimiento: String? = null,
     val peso: Double? = null,
     val color: String? = null,
     val notasMedicas: String? = null,
+    val imagenUri: String? = null, // URI de la imagen de la mascota
     val createdAt: Long = System.currentTimeMillis(),
 )

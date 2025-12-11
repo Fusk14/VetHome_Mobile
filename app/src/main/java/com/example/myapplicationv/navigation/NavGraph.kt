@@ -29,6 +29,7 @@ import com.example.myapplicationv.screen.EditUserScreen
 import com.example.myapplicationv.screen.ResenasScreen
 import com.example.myapplicationv.screen.AddResenaScreen
 import com.example.myapplicationv.screen.ResenaDetailScreen
+import com.example.myapplicationv.screen.ForgotPasswordScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,6 +48,7 @@ fun AppNavGraph(
     }
     val goLogin: () -> Unit = { navController.navigate(Route.Login.path) }
     val goRegister: () -> Unit = { navController.navigate(Route.Register.path) }
+    val goForgotPassword: () -> Unit = { navController.navigate(Route.ForgotPassword.path) }
     val goMascotas: () -> Unit = { navController.navigate(Route.Mascotas.path) }
     val goAddMascota: () -> Unit = { navController.navigate(Route.AddMascota.path) }
     val goCitas: () -> Unit = { navController.navigate(Route.Citas.path) }
@@ -157,7 +159,8 @@ fun AppNavGraph(
                                 goHome()
                             }
                         },
-                        onGoRegister = goRegister
+                        onGoRegister = goRegister,
+                        onForgotPassword = goForgotPassword
                     )
                 }
 
@@ -166,6 +169,13 @@ fun AppNavGraph(
                         vm = authViewModel,
                         onRegisteredNavigateLogin = goBack,
                         onGoLogin = goBack
+                    )
+                }
+
+                composable(Route.ForgotPassword.path) {
+                    ForgotPasswordScreen(
+                        vm = authViewModel,
+                        onBack = goBack
                     )
                 }
 

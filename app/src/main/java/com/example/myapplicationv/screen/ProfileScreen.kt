@@ -32,6 +32,7 @@ fun ProfileScreen(
     var phone by remember { mutableStateOf(profile.phone) }
     var address by remember { mutableStateOf(profile.address) }
     var emergency by remember { mutableStateOf(profile.emergencyContact) }
+    var currentPass by remember { mutableStateOf("") }
     var newPass by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
 
@@ -79,14 +80,41 @@ fun ProfileScreen(
             Divider(Modifier.padding(vertical = 8.dp))
 
             Text("Cambiar contraseña", style = MaterialTheme.typography.titleMedium)
-            OutlinedTextField(value = newPass, onValueChange = { newPass = it }, label = { Text("Nueva contraseña") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = confirm, onValueChange = { confirm = it }, label = { Text("Confirmar contraseña") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                value = currentPass,
+                onValueChange = { currentPass = it },
+                label = { Text("Contraseña actual") },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = newPass,
+                onValueChange = { newPass = it },
+                label = { Text("Nueva contraseña") },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = confirm,
+                onValueChange = { confirm = it },
+                label = { Text("Confirmar contraseña") },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth()
+            )
 
             Button(
-                onClick = { vm.changePassword(newPass, confirm) },
-                modifier = Modifier.fillMaxWidth()
+                onClick = { vm.changePassword(currentPass, newPass, confirm) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !profile.isLoading
             ) {
-                Text("Actualizar contraseña")
+                if (profile.isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                } else {
+                    Text("Actualizar contraseña")
+                }
             }
 
             if (profile.successMessage != null)

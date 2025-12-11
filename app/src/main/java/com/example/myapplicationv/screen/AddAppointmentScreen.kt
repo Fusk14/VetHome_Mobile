@@ -154,23 +154,42 @@ fun AddAppointmentScreen(
                     val date = selectedDate
                     if (pet != null && date != null && reason.isNotBlank()) {
                         vm.addAppointment(pet.id, date, reason)
-                        onAppointmentAdded()
-                    } else {
-                        // Manejar el caso de campos incompletos
+                        // Solo navegar si no hay error
+                        if (appointmentsState.error == null) {
+                            onAppointmentAdded()
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = selectedPet != null && selectedDate != null && reason.isNotBlank()
+                enabled = selectedPet != null && selectedDate != null && reason.isNotBlank() && !appointmentsState.isLoading
             ) {
                 if (appointmentsState.isLoading) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary)
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
                 } else {
                     Text("Agendar Cita")
                 }
             }
 
-            appointmentsState.error?.let {
-                Text(text = it, color = MaterialTheme.colorScheme.error)
+            // Mostrar error si existe
+            appointmentsState.error?.let { error ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Text(
+                        text = error,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(16.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
             }
         }
     }
