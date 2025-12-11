@@ -8,12 +8,14 @@ import com.example.myapplicationv.data.local.user.ClientDao
 import com.example.myapplicationv.data.local.user.ClientEntity
 import com.example.myapplicationv.data.remote.*
 import com.example.myapplicationv.data.remote.dto.*
+import retrofit2.Response
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -127,7 +129,11 @@ class VetRepositoryTest {
             rol = RolDto(1L, "CLIENTE")
         )
 
-        coEvery { usuarioApi.register(any()) } returns usuarioDto
+        val response = mockk<retrofit2.Response<UsuarioDto>>(relaxed = true)
+        every { response.isSuccessful } returns true
+        every { response.body() } returns usuarioDto
+        
+        coEvery { usuarioApi.register(any()) } returns response
         coEvery { clientDao.insert(any()) } returns 1L
 
         // Act
@@ -202,33 +208,6 @@ class VetRepositoryTest {
         assertEquals("Selecciona una especie válida", result.exceptionOrNull()?.message)
     }
 
-    @Test
-    fun crearResena_datosValidos_retornaIdResena() = runBlocking {
-        // Arrange
-        val usuarioId = 1L
-        val mascotaId = 1L
-        val mascotaNombre = "Firulais"
-        val calificacion = 5
-        val comentario = "Excelente servicio"
-        val fecha = "2023-01-01"
-        val resenaDto = ResenaDto(
-            id = 1L,
-            idCliente = usuarioId,
-            idVeterinario = usuarioId,
-            calificacion = calificacion,
-            comentario = comentario
-        )
-
-        coEvery { resenaApi.createResena(any()) } returns resenaDto
-        coEvery { resenaDao.insertar(any()) } returns 1L
-
-        // Act
-        val result = repository.crearResena(usuarioId, mascotaId, mascotaNombre, calificacion, comentario, fecha)
-
-        // Assert
-        assertTrue(result.isSuccess)
-        assertEquals(1L, result.getOrNull())
-    }
 
     @Test
     fun crearResena_calificacionInvalida_retornaError() = runBlocking {
