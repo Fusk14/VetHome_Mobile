@@ -247,27 +247,123 @@ class VetRepository(
         if (firstError != null)
             return Result.failure(IllegalArgumentException(firstError))
 
-        clientDao.updateClientInfo(clientId, name, phone, address, emergencyContact)
-        return Result.success(Unit)
+        // Separar nombre y apellido
+        val (nombre, apellido) = name.trim().split(" ", limit = 2).let {
+            it[0] to it.getOrNull(1).orEmpty()
+        }
+
+        return try {
+            // Actualizar en el microservicio primero
+            val datos = mapOf(
+                "nombre" to nombre,
+                "apellido" to apellido,
+                "telefono" to phone
+            )
+            
+            val response = usuarioApi.actualizarInformacion(clientId, datos)
+            
+            if (response.isSuccessful) {
+                val usuarioActualizado = response.body()
+                if (usuarioActualizado != null) {
+                    // Actualizar también en la base de datos local
+                    clientDao.updateClientInfo(clientId, name, phone, address, emergencyContact)
+                    Log.d("VetRepository", "✅ Información actualizada en servidor y localmente para usuario ID: $clientId")
+                    Result.success(Unit)
+                } else {
+                    Log.w("VetRepository", "⚠️ Respuesta exitosa pero sin cuerpo, actualizando solo localmente")
+                    clientDao.updateClientInfo(clientId, name, phone, address, emergencyContact)
+                    Result.success(Unit)
+                }
+            } else {
+                val errorBody = response.errorBody()?.string() ?: "Error desconocido"
+                Log.e("VetRepository", "❌ Error al actualizar información en servidor: ${response.code()} - $errorBody")
+                // Actualizar localmente como fallback
+                clientDao.updateClientInfo(clientId, name, phone, address, emergencyContact)
+                Result.success(Unit)
+            }
+        } catch (e: retrofit2.HttpException) {
+            Log.e("VetRepository", "❌ Error HTTP al actualizar información: ${e.code()} - ${e.message}")
+            // Actualizar localmente como fallback
+            clientDao.updateClientInfo(clientId, name, phone, address, emergencyContact)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e("VetRepository", "❌ Error al actualizar información: ${e.message}")
+            // Actualizar localmente como fallback
+            clientDao.updateClientInfo(clientId, name, phone, address, emergencyContact)
+            Result.success(Unit)
+        }
     }
 
     suspend fun changePassword(clientId: Long, currentPassword: String, newPassword: String): Result<Unit> {
-        // Validar que la contraseña actual sea correcta
         val client = clientDao.getById(clientId)
         if (client == null) {
             return Result.failure(IllegalArgumentException("Usuario no encontrado"))
-        }
-        
-        if (client.contrasena != currentPassword) {
-            return Result.failure(IllegalArgumentException("La contraseña actual es incorrecta"))
         }
         
         val passError = validateStrongPassword(newPassword)
         if (passError != null)
             return Result.failure(IllegalArgumentException(passError))
 
-        clientDao.updatePassword(clientId, newPassword)
-        return Result.success(Unit)
+        // Actualizar en el microservicio primero (el servidor valida la contraseña actual)
+        return try {
+            val datos = mapOf(
+                "contrasenaActual" to currentPassword,
+                "nuevaContrasena" to newPassword
+            )
+            
+            val response = usuarioApi.cambiarContrasena(clientId, datos)
+            
+            if (response.isSuccessful) {
+                // Actualizar también en la base de datos local
+                clientDao.updatePassword(clientId, newPassword)
+                Log.d("VetRepository", "✅ Contraseña actualizada en servidor y localmente para usuario ID: $clientId")
+                Result.success(Unit)
+            } else {
+                val errorBody = try {
+                    response.errorBody()?.string() ?: "Error desconocido"
+                } catch (e: Exception) {
+                    "Error al leer respuesta"
+                }
+                Log.e("VetRepository", "❌ Error al cambiar contraseña en servidor: ${response.code()} - $errorBody")
+                
+                val errorMessage = when (response.code()) {
+                    400 -> {
+                        when {
+                            errorBody.contains("incorrecta", ignoreCase = true) -> 
+                                "La contraseña actual es incorrecta"
+                            errorBody.isNotBlank() -> errorBody
+                            else -> "La contraseña actual es incorrecta o los datos son inválidos"
+                        }
+                    }
+                    else -> ErrorMessages.getFriendlyMessage(retrofit2.HttpException(response))
+                }
+                Result.failure(IllegalArgumentException(errorMessage))
+            }
+        } catch (e: retrofit2.HttpException) {
+            val errorBody = try {
+                e.response()?.errorBody()?.string() ?: e.message
+            } catch (ex: Exception) {
+                e.message ?: "Error desconocido"
+            }
+            Log.e("VetRepository", "❌ Error HTTP al cambiar contraseña: ${e.code()} - $errorBody")
+            
+            val errorBodyStr = errorBody ?: ""
+            val errorMessage = when (e.code()) {
+                400 -> {
+                    when {
+                        errorBodyStr.contains("incorrecta", ignoreCase = true) -> 
+                            "La contraseña actual es incorrecta"
+                        errorBodyStr.isNotBlank() -> errorBodyStr
+                        else -> "La contraseña actual es incorrecta"
+                    }
+                }
+                else -> ErrorMessages.getFriendlyMessage(e)
+            }
+            Result.failure(IllegalArgumentException(errorMessage))
+        } catch (e: Exception) {
+            Log.e("VetRepository", "❌ Error al cambiar contraseña: ${e.message}")
+            Result.failure(IllegalStateException(ErrorMessages.getFriendlyMessage(e)))
+        }
     }
     
     suspend fun forgotPassword(email: String): Result<Unit> {

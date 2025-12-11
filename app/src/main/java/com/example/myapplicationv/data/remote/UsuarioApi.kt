@@ -4,6 +4,7 @@ package com.example.myapplicationv.data.remote
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 // Línea 2: import de nuestro DTO
 import com.example.myapplicationv.data.remote.dto.UsuarioDto
@@ -37,6 +38,20 @@ interface UsuarioApi {
     // Endpoint para recuperar contraseña: POST /api/auth/forgot-password
     @POST("api/auth/forgot-password")
     suspend fun forgotPassword(@Body request: ForgotPasswordRequestDto): retrofit2.Response<okhttp3.ResponseBody>
+    
+    // Endpoint para actualizar información del usuario: PUT /api/usuarios/{id}
+    @PUT("api/usuarios/{id}")
+    suspend fun actualizarInformacion(
+        @Path("id") id: Long,
+        @Body datos: Map<String, String>
+    ): retrofit2.Response<UsuarioDto>
+    
+    // Endpoint para cambiar contraseña: PUT /api/usuarios/{id}/contrasena
+    @PUT("api/usuarios/{id}/contrasena")
+    suspend fun cambiarContrasena(
+        @Path("id") id: Long,
+        @Body datos: Map<String, String>
+    ): retrofit2.Response<okhttp3.ResponseBody>
 }
 
 
