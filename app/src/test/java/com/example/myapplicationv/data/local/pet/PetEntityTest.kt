@@ -66,6 +66,36 @@ class PetEntityTest {
         assertEquals(0, entity.edad)
     }
 
+
+    @Test
+    fun petEntity_MascotaRegistrada() {
+        // Arrange
+        val entity = PetEntity(
+            id = 1L,
+            idCliente = 1L,
+            nombre = "lukas",
+            especie = "Perro",
+            raza = "puddle",
+            edad = 1,
+            fechaNacimiento = null,
+            peso = null,
+            color = null,
+            notasMedicas = null
+        )
+
+
+        // Assert
+        assertEquals("lukas", entity.nombre)
+        assertEquals("Perro", entity.especie)
+        assertEquals("puddle",entity.raza)
+        assertEquals(1,entity.edad)
+        assertNull(entity.fechaNacimiento)
+        assertNull(entity.peso) // ✅ Ahora verifica correctamente que es null
+        assertNull(entity.color)
+        assertNull(entity.notasMedicas)
+
+    }
+
     @Test
     fun petEntity_conPesoYsinPeso_casosDiferentes() {
         // Arrange - Entity con peso

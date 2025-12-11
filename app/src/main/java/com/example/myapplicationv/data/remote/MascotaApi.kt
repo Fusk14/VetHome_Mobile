@@ -1,11 +1,9 @@
 package com.example.myapplicationv.data.remote
 
 
-import retrofit2.http.Body
-import retrofit2.http.DELETE
-import retrofit2.http.GET
-import retrofit2.http.POST
-import retrofit2.http.Path
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
+import retrofit2.http.*
 // Línea 2: import de nuestro DTO
 import com.example.myapplicationv.data.remote.dto.MascotaDto
 
@@ -27,7 +25,21 @@ interface MascotaApi {
     // Endpoint para eliminar una mascota: DELETE /api/mascotas/{id}
     @DELETE("api/mascotas/{id}")
     suspend fun deleteMascota(@Path("id") id: Long)
+    
+    // Endpoint para subir foto de una mascota: POST /api/mascotas/{id}/foto
+    @Multipart
+    @POST("api/mascotas/{id}/foto")
+    suspend fun uploadPetPhoto(
+        @Path("id") id: Long,
+        @Part foto: MultipartBody.Part
+    ): retrofit2.Response<okhttp3.ResponseBody>
+    
+    // Endpoint para obtener foto de una mascota: GET /api/mascotas/{id}/foto
+    @GET("api/mascotas/{id}/foto")
+    suspend fun getPetPhoto(@Path("id") id: Long): retrofit2.Response<okhttp3.ResponseBody>
 }
+
+
 
 
 

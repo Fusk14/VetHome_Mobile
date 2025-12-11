@@ -1,5 +1,7 @@
 package com.example.myapplicationv.viewmodel
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplicationv.data.local.appointment.AppointmentEntity
@@ -544,7 +546,8 @@ class AuthViewModel(
         fechaNacimiento: String?,
         peso: Double?,
         color: String?,
-        notasMedicas: String?
+        notasMedicas: String?,
+        fotoBytes: ByteArray? = null
     ) {
         val clientId = _currentUser.value.clientId
         if (clientId == 0L) {
@@ -573,6 +576,18 @@ class AuthViewModel(
                     )
                 }
             } else {
+                val petId = result.getOrNull() ?: 0L
+                // Si hay foto, subirla después de crear la mascota
+                fotoBytes?.let { bytes ->
+                    launch {
+                        try {
+                            repository.uploadPetPhotoBytes(petId, bytes)
+                        } catch (e: Exception) {
+                            // Error al subir foto, pero la mascota ya está creada
+                            println("Error al subir foto: ${e.message}")
+                        }
+                    }
+                }
                 _pets.update { it.copy(isLoading = false) }
             }
         }
@@ -586,6 +601,28 @@ class AuthViewModel(
                 _selectedPet.update { it.copy(pet = pet, isLoading = false) }
             } catch (e: Exception) {
                 _selectedPet.update { it.copy(error = "No se pudo cargar la mascota.", isLoading = false) }
+            }
+        }
+    }
+    
+    fun uploadPetPhoto(petId: Long, imageBytes: ByteArray) {
+        viewModelScope.launch {
+            try {
+                val result = repository.uploadPetPhotoBytes(petId, imageBytes)
+                if (result.isSuccess) {
+                    // Esperar un momento para que el servidor procese la imagen
+                    kotlinx.coroutines.delay(1000)
+                    // Recargar la mascota para actualizar el estado
+                    loadPetById(petId)
+                    // Forzar actualización del estado para que se recargue la imagen
+                    _selectedPet.update { it.copy() }
+                } else {
+                    _selectedPet.update {
+                        it.copy(error = result.exceptionOrNull()?.message ?: "Error al subir foto")
+                    }
+                }
+            } catch (e: Exception) {
+                _selectedPet.update { it.copy(error = "Error al subir foto: ${e.message}") }
             }
         }
     }

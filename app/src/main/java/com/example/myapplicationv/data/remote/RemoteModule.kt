@@ -10,7 +10,7 @@ object RemoteModule {
     private const val DEV_TUNNEL_ID = "rvhcfwb0"
     private const val DEV_TUNNEL_DOMAIN = "brs.devtunnels.ms"
 
-    private enum class Microservice(val port: Int) {
+    enum class Microservice(val port: Int) {
         USUARIOS(8081),
         MASCOTAS(8090),
         CONSULTAS(8091),
@@ -29,7 +29,7 @@ object RemoteModule {
 
     private val retrofitCache = mutableMapOf<Microservice, Retrofit>()
 
-    private fun baseUrlFor(service: Microservice) =
+    fun baseUrlFor(service: Microservice) =
         "https://$DEV_TUNNEL_ID-${service.port}.$DEV_TUNNEL_DOMAIN/"
 
     private fun retrofitFor(service: Microservice): Retrofit =

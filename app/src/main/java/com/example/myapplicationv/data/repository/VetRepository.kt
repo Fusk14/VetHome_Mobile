@@ -2,6 +2,10 @@ package com.example.myapplicationv.data.repository
 
 import java.time.LocalDate
 import java.time.Period
+import android.content.Context
+import android.net.Uri
+import java.io.InputStream
+import okhttp3.MediaType.Companion.toMediaType
 
 import com.example.myapplicationv.data.local.appointment.AppointmentDao
 import com.example.myapplicationv.data.local.appointment.AppointmentEntity
@@ -224,7 +228,8 @@ class VetRepository(
         fechaNacimiento: String?,
         peso: Double?,
         color: String?,
-        notasMedicas: String?
+        notasMedicas: String?,
+        fotoUri: String? = null
     ): Result<Long> {
 
         val nombreError = validatePetName(nombre)
@@ -309,6 +314,34 @@ class VetRepository(
     suspend fun deletePet(petId: Long) = petDao.deleteById(petId)
 
     suspend fun getPetCountByOwner(ownerId: Long): Int = petDao.countByOwner(ownerId)
+    
+    suspend fun uploadPetPhotoBytes(petId: Long, imageBytes: ByteArray): Result<Unit> {
+        return try {
+            val mediaType = "image/jpeg".toMediaType()
+            val requestFile = okhttp3.RequestBody.create(mediaType, imageBytes)
+            val fotoPart = okhttp3.MultipartBody.Part.createFormData("foto", "pet_photo.jpg", requestFile)
+            
+            val response = mascotaApi.uploadPetPhoto(petId, fotoPart)
+            if (response.isSuccessful) {
+                Result.success(Unit)
+            } else {
+                val errorBody = response.errorBody()?.string() ?: "Sin detalles"
+                Result.failure(IllegalStateException("Error al subir foto: ${response.code()} - $errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    suspend fun getPetPhotoUrl(petId: Long): String? {
+        return try {
+            // Construir URL para obtener la foto
+            val baseUrl = RemoteModule.baseUrlFor(RemoteModule.Microservice.MASCOTAS)
+            "$baseUrl/api/mascotas/$petId/foto"
+        } catch (e: Exception) {
+            null
+        }
+    }
 
 
     //consultas/appointments
